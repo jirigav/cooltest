@@ -20,47 +20,66 @@ pub(crate) struct Args {
 }
 
 #[derive(Subcommand)]
+#[command(author, version, about, long_about = None)]
 pub(crate) enum Subcommands {
+    /// Simple tool to shuffle blocks of given length of the input file and save shuffled data into output file. 
     ShuffleData {
+
+        /// Length of block of data.
         block_size: usize,
 
+        /// Path to input file.
         input_file_path: String,
 
+        /// Path to where the optput of this function should be stored. 
         output_file_path: String,
     },
 
+    /// Tool for finding frequent patterns in data.
     Bottomup {
+        /// Path of file with input data.
         data_source: String,
 
+        /// Length of block of data.
         #[arg(short, long, default_value_t = 128)]
         block_size: usize,
 
+        /// Number of explored pattern branches.
         #[arg(short, long, default_value_t = 10)]
         k: usize,
 
+        /// Minimal count of a pattern in data, to be considered. 
         #[arg(short, long, default_value_t = 10)]
         min_count: usize,
 
-        #[arg(long, short)]
+        /// Option whether the input data should be halved into training and testing data. 
+        #[arg(long)]
         halving: bool,
     },
 
+    /// Faster tool for finding frequent patterns, which usually finds weaker distinguishers, but with significantly lower number of tested distinguishers.
     Fastup {
+        /// Path of file with input data.
         data_source: String,
 
+        /// Length of block of data.
         #[arg(short, long, default_value_t = 128)]
         block_size: usize,
 
+        /// Number of explored pattern branches.
         #[arg(short, long, default_value_t = 10)]
         k: usize,
 
+        /// Number of bits considered for the patterns.
         #[arg(short, long, default_value_t = 64)]
         n: usize,
 
+        /// Minimal count of a pattern in data, to be considered. 
         #[arg(short, long, default_value_t = 10)]
         min_count: usize,
 
-        #[arg(long, short)]
+        /// Option whether the input data should be halved into training and testing data. 
+        #[arg(long)]
         halving: bool,
     },
 }
