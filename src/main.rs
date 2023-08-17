@@ -15,7 +15,8 @@ fn run_bottomup(data_source: String, block_size: usize, k: usize, min_count: usi
         let (training_data, testing_data) = data.split_at(data.len() / 2);
 
         let start = Instant::now();
-        let mut final_patterns = bottomup(training_data, block_size, k, min_count);
+        let (mut final_patterns, _evlauated_disses) =
+            bottomup(training_data, block_size, k, min_count);
         final_patterns.sort_by(|a, b| {
             f64::abs(b.z_score.unwrap())
                 .partial_cmp(&f64::abs(a.z_score.unwrap()))
@@ -41,15 +42,20 @@ fn run_bottomup(data_source: String, block_size: usize, k: usize, min_count: usi
         }
     } else {
         let start = Instant::now();
-        let mut final_patterns = bottomup(&data, block_size, k, min_count);
+        let (mut final_patterns, mut evlauated_disses) = bottomup(&data, block_size, k, min_count);
         final_patterns.sort_by(|a, b| {
             f64::abs(b.z_score.unwrap())
                 .partial_cmp(&f64::abs(a.z_score.unwrap()))
                 .unwrap()
         });
+        evlauated_disses += k * (k - 1) / 2;
         let b_double_pattern = best_double_pattern(&data, &final_patterns);
         println!("bottomup trained in {:.2?}", start.elapsed());
 
+        println!(
+            "total number of distinguishers evaluated: {}",
+            evlauated_disses
+        );
         if f64::abs(final_patterns[0].z_score.unwrap())
             > f64::abs(b_double_pattern.z_score.unwrap())
         {
@@ -75,14 +81,15 @@ fn run_fastup(
     if halving {
         let (training_data, testing_data) = data.split_at(data.len() / 2);
         let start = Instant::now();
-        let mut final_patterns = fastup(training_data, block_size, n, k, min_count);
+        let (mut final_patterns, _evlauated_disses) =
+            fastup(training_data, block_size, n, k, min_count);
         final_patterns.sort_by(|a, b| {
             f64::abs(b.z_score.unwrap())
                 .partial_cmp(&f64::abs(a.z_score.unwrap()))
                 .unwrap()
         });
         let mut b_double_pattern = best_double_pattern(training_data, &final_patterns);
-        println!("bottomup trained in {:.2?}", start.elapsed());
+        println!("fastup trained in {:.2?}", start.elapsed());
 
         if f64::abs(final_patterns[0].z_score.unwrap())
             > f64::abs(b_double_pattern.z_score.unwrap())
@@ -101,15 +108,19 @@ fn run_fastup(
         }
     } else {
         let start = Instant::now();
-        let mut final_patterns = fastup(&data, block_size, n, k, min_count);
+        let (mut final_patterns, mut evlauated_disses) = fastup(&data, block_size, n, k, min_count);
         final_patterns.sort_by(|a, b| {
             f64::abs(b.z_score.unwrap())
                 .partial_cmp(&f64::abs(a.z_score.unwrap()))
                 .unwrap()
         });
+        evlauated_disses += k * (k - 1) / 2;
         let b_double_pattern = best_double_pattern(&data, &final_patterns);
         println!("bottomup trained in {:.2?}", start.elapsed());
-
+        println!(
+            "total number of distinguishers evaluated: {}",
+            evlauated_disses
+        );
         if f64::abs(final_patterns[0].z_score.unwrap())
             > f64::abs(b_double_pattern.z_score.unwrap())
         {

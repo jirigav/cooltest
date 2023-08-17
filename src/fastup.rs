@@ -50,6 +50,7 @@ fn extend_patterns(
     data: &[Vec<u8>],
     min_count: usize,
     final_patterns: &mut Vec<Pattern>,
+    evaluated_dises: &mut usize,
 ) -> Vec<Pattern> {
     let mut new_patterns = Vec::new();
 
@@ -64,6 +65,7 @@ fn extend_patterns(
             if new_patterns.contains(&testpattern) {
                 continue;
             }
+            *evaluated_dises += 1;
             testpattern.count = Some(
                 data.par_iter()
                     .filter(|block| testpattern.evaluate(block))
@@ -100,7 +102,8 @@ pub(crate) fn fastup(
     n: usize,
     k: usize,
     min_count: usize,
-) -> Vec<Pattern> {
+) -> (Vec<Pattern>, usize) {
+    let mut evaluated_dises = block_size;
     let zs = basic_zs(data, block_size);
 
     let top_bits = top_n_bits(zs, n);
@@ -116,6 +119,7 @@ pub(crate) fn fastup(
             z_score: Some(*z),
         })
         .collect();
+
     let mut final_patterns: Vec<Pattern> = Vec::new();
 
     let mut current_length = 1;
@@ -127,8 +131,9 @@ pub(crate) fn fastup(
             data,
             min_count,
             &mut final_patterns,
+            &mut evaluated_dises,
         );
     }
 
-    final_patterns
+    (final_patterns, evaluated_dises)
 }

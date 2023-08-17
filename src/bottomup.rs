@@ -84,6 +84,7 @@ fn phase_two(
     data: &[Vec<u8>],
     min_count: usize,
     block_size: usize,
+    evaluated_dises: &mut usize,
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
 
@@ -93,7 +94,7 @@ fn phase_two(
         pattern_len += 1;
 
         let mut hists: Vec<Vec<(usize, usize)>> = Vec::new();
-
+        *evaluated_dises += 2*top_k.len()*(block_size - pattern_len + 1);
         for _ in 0..top_k.len() {
             hists.push(vec![(0, 0); block_size]);
         }
@@ -145,7 +146,11 @@ pub(crate) fn bottomup(
     block_size: usize,
     k: usize,
     min_count: usize,
-) -> Vec<Pattern> {
+) -> (Vec<Pattern>, usize) {
+    let mut evaluated_dises = 2 * block_size * (block_size - 1); // 4*(bock_size choose 2)
     let top_k = phase_one(data, k, block_size);
-    phase_two(k, top_k, data, min_count, block_size)
+    (
+        phase_two(k, top_k, data, min_count, block_size, &mut evaluated_dises),
+        evaluated_dises,
+    )
 }
