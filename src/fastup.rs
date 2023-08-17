@@ -1,10 +1,10 @@
 use crate::common::*;
 use rayon::prelude::*;
 
-fn basic_zs(data: &Vec<Vec<u8>>, block_size: usize) -> Vec<f64> {
+fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
     let mut counts = vec![0; block_size];
 
-   for block in data.iter() {
+    for block in data.iter() {
         for (i, count) in counts.iter_mut().enumerate() {
             if bit_value_in_block(&i, block) {
                 *count += 1
@@ -49,7 +49,7 @@ fn extend_patterns(
     top_bits: &[(usize, f64)],
     data: &[Vec<u8>],
     min_count: usize,
-    final_patterns: &mut Vec<Pattern>
+    final_patterns: &mut Vec<Pattern>,
 ) -> Vec<Pattern> {
     let mut new_patterns = Vec::new();
 
@@ -94,15 +94,20 @@ fn extend_patterns(
     new_patterns
 }
 
-pub(crate) fn fastup(args: &Args, data: &Vec<Vec<u8>>) -> Vec<Pattern> {
+pub(crate) fn fastup(
+    data: &[Vec<u8>],
+    block_size: usize,
+    n: usize,
+    k: usize,
+    min_count: usize,
+) -> Vec<Pattern> {
+    let zs = basic_zs(data, block_size);
 
-    let zs = basic_zs(data, args.block_size);
-
-    let top_bits = top_n_bits(zs, args.n);
+    let top_bits = top_n_bits(zs, n);
 
     let mut best_patterns: Vec<Pattern> = top_bits
         .iter()
-        .skip(args.n - args.k)
+        .skip(n - k)
         .map(|(i, z)| Pattern {
             length: 1,
             bits: vec![*i],
@@ -112,12 +117,17 @@ pub(crate) fn fastup(args: &Args, data: &Vec<Vec<u8>>) -> Vec<Pattern> {
         })
         .collect();
     let mut final_patterns: Vec<Pattern> = Vec::new();
-    
+
     let mut current_length = 1;
-    while !best_patterns.is_empty() && current_length < args.n {
+    while !best_patterns.is_empty() && current_length < n {
         current_length += 1;
-        best_patterns =
-            extend_patterns(best_patterns, &top_bits, data, args.min_count, &mut final_patterns);
+        best_patterns = extend_patterns(
+            best_patterns,
+            &top_bits,
+            data,
+            min_count,
+            &mut final_patterns,
+        );
     }
 
     final_patterns

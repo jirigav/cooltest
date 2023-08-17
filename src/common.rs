@@ -1,9 +1,9 @@
+use clap::{Parser, Subcommand};
 use rand::seq::SliceRandom;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs::File;
 use std::{fs, io::Write};
-use clap::Parser;
 
 //pub(crate) const LEN_OF_BLOCK_IN_BYTES: usize = 16;
 //pub(crate) const LEN_OF_BLOCK: usize = LEN_OF_BLOCK_IN_BYTES * 8;
@@ -12,24 +12,57 @@ pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub(crate) struct Args {
-    
-    #[arg(short, long)]
-    pub(crate) data_source: String,
+    #[clap(subcommand)]
+    pub(crate) tool: Subcommands,
+}
 
-    #[arg(short, long)]
-    pub(crate) block_size: usize,
+#[derive(Subcommand)]
+pub(crate) enum Subcommands {
+    ShuffleData {
+        block_size: usize,
 
-    #[arg(short, long, default_value_t = 10)]
-    pub(crate) k: usize,
+        input_file_path: String,
 
-    #[arg(short, long, default_value_t = 64)]
-    pub(crate) n: usize,
+        output_file_path: String,
+    },
 
-    #[arg(short, long, default_value_t = 10)]
-    pub(crate) min_count: usize,
+    Bottomup {
+        data_source: String,
+
+        #[arg(short, long, default_value_t = 128)]
+        block_size: usize,
+
+        #[arg(short, long, default_value_t = 10)]
+        k: usize,
+
+        #[arg(short, long, default_value_t = 10)]
+        min_count: usize,
+
+        #[arg(long, short)]
+        halving: bool,
+    },
+
+    Fastup {
+        data_source: String,
+
+        #[arg(short, long, default_value_t = 128)]
+        block_size: usize,
+
+        #[arg(short, long, default_value_t = 10)]
+        k: usize,
+
+        #[arg(short, long, default_value_t = 64)]
+        n: usize,
+
+        #[arg(short, long, default_value_t = 10)]
+        min_count: usize,
+
+        #[arg(long, short)]
+        halving: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -107,6 +140,7 @@ pub(crate) struct DoublePattern {
     pattern1: Pattern,
     pattern2: Pattern,
     probability: f64,
+    pub(crate) z_score: Option<f64>,
 }
 
 impl DoublePattern {
@@ -135,6 +169,7 @@ impl DoublePattern {
             pattern1,
             pattern2,
             probability,
+            z_score: None,
         }
     }
 
@@ -142,20 +177,19 @@ impl DoublePattern {
         self.pattern1.evaluate(block) || self.pattern2.evaluate(block)
     }
 
-    pub(crate) fn z_score(&self, sample_size: usize, positive: usize) -> f64 {
-        z_score(sample_size, positive, self.probability)
+    pub(crate) fn z_score(&mut self, sample_size: usize, positive: usize) -> f64 {
+        self.z_score = Some(z_score(sample_size, positive, self.probability));
+        self.z_score.unwrap()
     }
 }
 
-pub(crate) fn best_double_patterns(
-    data: &[Vec<u8>],
-    patterns: &[Pattern],
-    k: usize,
-) -> Vec<DoublePattern> {
-    let mut double_patterns: Vec<(f64, DoublePattern)> = Vec::new();
+pub(crate) fn best_double_pattern(data: &[Vec<u8>], patterns: &[Pattern]) -> DoublePattern {
+    let mut best_double_pattern: DoublePattern =
+        DoublePattern::new(patterns[0].clone(), patterns[0].clone());
+    best_double_pattern.z_score = Some(0.0);
     for i in 0..patterns.len() {
         for j in i..patterns.len() {
-            let double_pattern = DoublePattern::new(patterns[i].clone(), patterns[j].clone());
+            let mut double_pattern = DoublePattern::new(patterns[i].clone(), patterns[j].clone());
 
             let count = data
                 .par_iter()
@@ -165,15 +199,12 @@ pub(crate) fn best_double_patterns(
 
             let z = double_pattern.z_score(data.len(), count);
 
-            double_patterns.push((z, double_pattern));
+            if f64::abs(z) > f64::abs(best_double_pattern.z_score.unwrap()) {
+                best_double_pattern = double_pattern;
+            }
         }
     }
-    double_patterns.sort_by(|a, b| f64::abs(b.0).partial_cmp(&f64::abs(a.0)).unwrap());
-    double_patterns
-        .iter()
-        .take(k)
-        .map(|(_z, double_pattern)| double_pattern.clone())
-        .collect()
+    best_double_pattern
 }
 
 pub(crate) fn bit_value_in_block(bit: &usize, block: &[u8]) -> bool {
@@ -193,7 +224,7 @@ pub(crate) fn bits_block_eval(bits: Vec<usize>, block: &[u8]) -> usize {
 }
 
 pub(crate) fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
-    let len_of_block_in_bytes = block_size/8;
+    let len_of_block_in_bytes = block_size / 8;
     fs::read(path)
         .unwrap()
         .chunks(len_of_block_in_bytes)
@@ -201,8 +232,7 @@ pub(crate) fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
         .collect()
 }
 
-pub(crate) fn evaluate_pattern(pattern: &mut Pattern, path: &str, block_size: usize) -> f64 {
-    let data = load_data(path, block_size);
+pub(crate) fn evaluate_pattern(pattern: &mut Pattern, data: &[Vec<u8>]) -> f64 {
     pattern.count = Some(
         data.par_iter()
             .map(|block| pattern.evaluate(block))
@@ -212,8 +242,7 @@ pub(crate) fn evaluate_pattern(pattern: &mut Pattern, path: &str, block_size: us
     pattern.z(data.len())
 }
 
-pub(crate) fn evaluate_double_pattern(double_pattern: &DoublePattern, path: &str, block_size: usize) -> f64 {
-    let data = load_data(path, block_size);
+pub(crate) fn evaluate_double_pattern(double_pattern: &mut DoublePattern, data: &[Vec<u8>]) -> f64 {
     let count = data
         .par_iter()
         .map(|block| double_pattern.evaluate(block))
@@ -222,26 +251,15 @@ pub(crate) fn evaluate_double_pattern(double_pattern: &DoublePattern, path: &str
     double_pattern.z_score(data.len(), count)
 }
 
-pub(crate) fn split_data(data_in_path: &str, train_data_path: &str, test_data_path: &str, booltest_path: &str, block_size: usize) {
+pub(crate) fn shuffle_data(data_in_path: &str, data_out_path: &str, block_size: usize) {
     let mut data = load_data(data_in_path, block_size);
     let mut rng = rand::thread_rng();
     data.shuffle(&mut rng);
 
-    let mut booltest_file = File::create(booltest_path).unwrap();
+    let mut file_out = File::create(data_out_path).unwrap();
 
-    booltest_file.write_all(&data.iter().flatten().copied().collect::<Vec<u8>>()).unwrap();
-
-    let mut train_file = File::create(train_data_path).unwrap();
-    let mut test_file = File::create(test_data_path).unwrap();
-
-    let (training_data, testing_data) = data.split_at(data.len() / 2);
-    assert_eq!(training_data.len(), testing_data.len());
-
-    train_file
-        .write_all(&training_data.iter().flatten().copied().collect::<Vec<u8>>())
-        .unwrap();
-    test_file
-        .write_all(&testing_data.iter().flatten().copied().collect::<Vec<u8>>())
+    file_out
+        .write_all(&data.iter().flatten().copied().collect::<Vec<u8>>())
         .unwrap();
 }
 

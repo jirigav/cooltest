@@ -1,7 +1,7 @@
 use crate::common::*;
 use rayon::prelude::*;
 
-fn phase_one(data: &Vec<Vec<u8>>, k: usize, block_size: usize) -> Vec<Pattern> {
+fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize) -> Vec<Pattern> {
     let m = [(false, false), (true, false), (false, true), (true, true)];
     let mut best_pairs = vec![(0, ((0, 0), (false, false))); k];
 
@@ -81,7 +81,7 @@ fn improving(
 fn phase_two(
     k: usize,
     mut top_k: Vec<Pattern>,
-    data: &Vec<Vec<u8>>,
+    data: &[Vec<u8>],
     min_count: usize,
     block_size: usize,
 ) -> Vec<Pattern> {
@@ -140,7 +140,12 @@ fn phase_two(
     final_patterns
 }
 
-pub(crate) fn bottomup(args: &Args, data: &Vec<Vec<u8>>) -> Vec<Pattern> {
-    let top_k = phase_one(data, args.k, args.block_size);
-    phase_two(args.k, top_k, data, args.min_count, args.block_size)
+pub(crate) fn bottomup(
+    data: &[Vec<u8>],
+    block_size: usize,
+    k: usize,
+    min_count: usize,
+) -> Vec<Pattern> {
+    let top_k = phase_one(data, k, block_size);
+    phase_two(k, top_k, data, min_count, block_size)
 }
