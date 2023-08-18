@@ -1,4 +1,5 @@
 use crate::common::*;
+use crate::patterns::*;
 use rayon::prelude::*;
 
 fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize) -> Vec<Pattern> {
@@ -52,7 +53,7 @@ fn improving(
 ) -> Vec<Pattern> {
     let mut new_patterns = Vec::new();
     if pattern.z_score.is_none() {
-        pattern.z(samples);
+        pattern.z_score(samples);
     }
     for (i, counts) in hist.iter().enumerate() {
         if pattern.bits.contains(&i) {
@@ -71,7 +72,7 @@ fn improving(
         {
             let mut new_pattern = pattern.clone();
             new_pattern.add_bit(i, v);
-            new_pattern.count = Some(count);
+            new_pattern.increase_count(count);
             new_patterns.push(new_pattern)
         }
     }
@@ -94,7 +95,7 @@ fn phase_two(
         pattern_len += 1;
 
         let mut hists: Vec<Vec<(usize, usize)>> = Vec::new();
-        *evaluated_dises += 2*top_k.len()*(block_size - pattern_len + 1);
+        *evaluated_dises += 2 * top_k.len() * (block_size - pattern_len + 1);
         for _ in 0..top_k.len() {
             hists.push(vec![(0, 0); block_size]);
         }
@@ -126,7 +127,7 @@ fn phase_two(
                 continue;
             }
 
-            imp.sort_by(|a, b| b.count.cmp(&a.count));
+            imp.sort_by_key(|b| std::cmp::Reverse(b.get_count()));
 
             for p in imp.iter() {
                 if !new_top_k.contains(p) {

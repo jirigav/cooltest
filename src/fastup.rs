@@ -1,4 +1,5 @@
 use crate::common::*;
+use crate::patterns::*;
 use rayon::prelude::*;
 
 fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
@@ -66,15 +67,14 @@ fn extend_patterns(
                 continue;
             }
             *evaluated_dises += 1;
-            testpattern.count = Some(
+            testpattern.increase_count(
                 data.par_iter()
                     .filter(|block| testpattern.evaluate(block))
                     .count(),
             );
-            let new_z = testpattern.z(data.len());
+            let new_z = testpattern.z_score(data.len());
 
-            if f64::abs(new_z) < f64::abs(p.z_score.unwrap())
-                || testpattern.count.unwrap() < min_count
+            if f64::abs(new_z) < f64::abs(p.z_score.unwrap()) || testpattern.get_count() < min_count
             {
                 continue;
             }

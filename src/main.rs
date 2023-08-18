@@ -1,71 +1,86 @@
 mod bottomup;
 mod common;
 mod fastup;
+mod patterns;
 
 use crate::bottomup::bottomup;
 use crate::common::*;
 use crate::fastup::fastup;
+use crate::patterns::*;
 use clap::Parser;
+use std::fmt::Debug;
 use std::time::Instant;
 
-fn run_bottomup(data_source: String, block_size: usize, k: usize, min_count: usize, halving: bool) {
-    let data = load_data(&data_source, block_size);
+fn prepare_data(
+    data_source: String,
+    block_size: usize,
+    halving: bool,
+) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>) {
+    let mut training_data = load_data(&data_source, block_size);
+    let mut testing_data_option = None;
 
     if halving {
-        let (training_data, testing_data) = data.split_at(data.len() / 2);
+        let (tr_data, testing_data) = training_data.split_at(training_data.len() / 2);
+        testing_data_option = Some(testing_data.to_vec());
+        training_data = tr_data.to_vec();
+    }
+    (training_data, testing_data_option)
+}
 
-        let start = Instant::now();
-        let (mut final_patterns, _evlauated_disses) =
-            bottomup(training_data, block_size, k, min_count);
-        final_patterns.sort_by(|a, b| {
-            f64::abs(b.z_score.unwrap())
-                .partial_cmp(&f64::abs(a.z_score.unwrap()))
-                .unwrap()
-        });
-        let mut b_double_pattern = best_double_pattern(training_data, &final_patterns);
-        println!("bottomup trained in {:.2?}", start.elapsed());
+fn results(
+    mut final_patterns: Vec<Pattern>,
+    start: Instant,
+    training_data: &[Vec<u8>],
+    testing_data_option: Option<Vec<Vec<u8>>>,
+    evaluated_disses: usize,
+) {
+    final_patterns.sort_by(|a, b| {
+        f64::abs(b.z_score.unwrap())
+            .partial_cmp(&f64::abs(a.z_score.unwrap()))
+            .unwrap()
+    });
+    let mut b_double_pattern = best_double_pattern(training_data, &final_patterns);
+    println!("trained in {:.2?}", start.elapsed());
 
-        if f64::abs(final_patterns[0].z_score.unwrap())
-            > f64::abs(b_double_pattern.z_score.unwrap())
-        {
-            println!(
-                "z-score: {}",
-                evaluate_pattern(&mut final_patterns[0], testing_data)
-            );
-            println!("best pattern: {:?}", final_patterns[0])
-        } else {
-            println!(
-                "z-score: {}",
-                evaluate_double_pattern(&mut b_double_pattern, testing_data)
-            );
-            println!("best double pattern: {:?}", b_double_pattern)
-        }
+    println!(
+        "total number of distinguishers evaluated: {}",
+        evaluated_disses
+    );
+    if f64::abs(final_patterns[0].z_score.unwrap()) > f64::abs(b_double_pattern.z_score.unwrap()) {
+        println!("z-score: {}", final_patterns[0].z_score.unwrap());
+        println!("best pattern: {:?}", final_patterns[0])
     } else {
-        let start = Instant::now();
-        let (mut final_patterns, mut evlauated_disses) = bottomup(&data, block_size, k, min_count);
-        final_patterns.sort_by(|a, b| {
-            f64::abs(b.z_score.unwrap())
-                .partial_cmp(&f64::abs(a.z_score.unwrap()))
-                .unwrap()
-        });
-        evlauated_disses += k * (k - 1) / 2;
-        let b_double_pattern = best_double_pattern(&data, &final_patterns);
-        println!("bottomup trained in {:.2?}", start.elapsed());
+        println!("z-score: {}", b_double_pattern.z_score.unwrap());
+        println!("best double pattern: {:?}", b_double_pattern)
+    }
 
-        println!(
-            "total number of distinguishers evaluated: {}",
-            evlauated_disses
-        );
+    if let Some(testing_data) = testing_data_option {
         if f64::abs(final_patterns[0].z_score.unwrap())
             > f64::abs(b_double_pattern.z_score.unwrap())
         {
-            println!("z-score: {}", final_patterns[0].z_score.unwrap());
-            println!("best pattern: {:?}", final_patterns[0])
+            print_result(&mut final_patterns[0], &testing_data);
         } else {
-            println!("z-score: {}", b_double_pattern.z_score.unwrap());
-            println!("best double pattern: {:?}", b_double_pattern)
+            print_result(&mut b_double_pattern, &testing_data);
         }
     }
+}
+
+fn print_result<P: GeneralizedPattern + Debug>(pattern: &mut P, data: &[Vec<u8>]) {
+    println!("z-score: {}", evaluate_pattern(pattern, data));
+}
+
+fn run_bottomup(data_source: String, block_size: usize, k: usize, min_count: usize, halving: bool) {
+    let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
+
+    let start = Instant::now();
+    let (final_patterns, evaluated_disses) = bottomup(&training_data, block_size, k, min_count);
+    results(
+        final_patterns,
+        start,
+        &training_data,
+        testing_data_option,
+        evaluated_disses,
+    );
 }
 
 fn run_fastup(
@@ -76,61 +91,17 @@ fn run_fastup(
     min_count: usize,
     halving: bool,
 ) {
-    let data = load_data(&data_source, block_size);
+    let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
 
-    if halving {
-        let (training_data, testing_data) = data.split_at(data.len() / 2);
-        let start = Instant::now();
-        let (mut final_patterns, _evlauated_disses) =
-            fastup(training_data, block_size, n, k, min_count);
-        final_patterns.sort_by(|a, b| {
-            f64::abs(b.z_score.unwrap())
-                .partial_cmp(&f64::abs(a.z_score.unwrap()))
-                .unwrap()
-        });
-        let mut b_double_pattern = best_double_pattern(training_data, &final_patterns);
-        println!("fastup trained in {:.2?}", start.elapsed());
-
-        if f64::abs(final_patterns[0].z_score.unwrap())
-            > f64::abs(b_double_pattern.z_score.unwrap())
-        {
-            println!(
-                "z-score: {}",
-                evaluate_pattern(&mut final_patterns[0], testing_data)
-            );
-            println!("best pattern: {:?}", final_patterns[0])
-        } else {
-            println!(
-                "z-score: {}",
-                evaluate_double_pattern(&mut b_double_pattern, testing_data)
-            );
-            println!("best double pattern: {:?}", b_double_pattern)
-        }
-    } else {
-        let start = Instant::now();
-        let (mut final_patterns, mut evlauated_disses) = fastup(&data, block_size, n, k, min_count);
-        final_patterns.sort_by(|a, b| {
-            f64::abs(b.z_score.unwrap())
-                .partial_cmp(&f64::abs(a.z_score.unwrap()))
-                .unwrap()
-        });
-        evlauated_disses += k * (k - 1) / 2;
-        let b_double_pattern = best_double_pattern(&data, &final_patterns);
-        println!("bottomup trained in {:.2?}", start.elapsed());
-        println!(
-            "total number of distinguishers evaluated: {}",
-            evlauated_disses
-        );
-        if f64::abs(final_patterns[0].z_score.unwrap())
-            > f64::abs(b_double_pattern.z_score.unwrap())
-        {
-            println!("z-score: {}", final_patterns[0].z_score.unwrap());
-            println!("best pattern: {:?}", final_patterns[0])
-        } else {
-            println!("z-score: {}", b_double_pattern.z_score.unwrap());
-            println!("best double pattern: {:?}", b_double_pattern)
-        }
-    }
+    let start = Instant::now();
+    let (final_patterns, evaluated_disses) = fastup(&training_data, block_size, n, k, min_count);
+    results(
+        final_patterns,
+        start,
+        &training_data,
+        testing_data_option,
+        evaluated_disses,
+    );
 }
 
 fn main() {
