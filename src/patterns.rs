@@ -1,4 +1,5 @@
 use crate::common::*;
+use itertools::Itertools;
 use rayon::prelude::*;
 use std::{collections::HashSet, fmt::Debug};
 
@@ -125,20 +126,8 @@ impl DoublePattern {
     pub(crate) fn new(pattern1: Pattern, pattern2: Pattern) -> DoublePattern {
         let mut probability: f64 =
             2.0_f64.powf(-(pattern1.length as f64)) + 2.0_f64.powf(-(pattern2.length as f64));
-        let mut disjoint = false;
-        for (i, b1) in pattern1.bits.iter().enumerate() {
-            for (j, b2) in pattern2.bits.iter().enumerate() {
-                if b1 == b2 && pattern1.values[i] != pattern2.values[j] {
-                    disjoint = true;
-                    break;
-                }
-            }
-            if disjoint {
-                break;
-            }
-        }
 
-        if !disjoint {
+        if !disjoint_patterns(&[&pattern1, &pattern2]) {
             let mut union = pattern1.bits.iter().collect::<HashSet<_>>();
             union.extend(pattern2.bits.iter());
             probability -= 2.0_f64.powf(-(union.len() as f64));
@@ -150,10 +139,6 @@ impl DoublePattern {
             z_score: None,
             count: None,
         }
-    }
-
-    pub(crate) fn evaluate(&self, block: &[u8]) -> bool {
-        self.pattern1.evaluate(block) || self.pattern2.evaluate(block)
     }
 }
 
@@ -215,6 +200,113 @@ pub(crate) fn best_double_pattern(data: &[Vec<u8>], patterns: &[Pattern]) -> Dou
         }
     }
     best_double_pattern
+}
+
+#[derive(Debug)]
+pub(crate) struct DisjointPatterns {
+    patterns: Vec<Pattern>,
+    probability: f64,
+    pub(crate) z_score: Option<f64>,
+    count: Option<usize>,
+}
+
+impl DisjointPatterns {
+    pub(crate) fn new(patterns: &[&Pattern]) -> Option<DisjointPatterns> {
+        let probability: f64 = patterns
+            .iter()
+            .map(|p| 2.0_f64.powf(-(p.length as f64)))
+            .sum();
+
+        let disjoint = disjoint_patterns(patterns);
+
+        if !disjoint {
+            None
+        } else {
+            Some(DisjointPatterns {
+                patterns: patterns.iter().cloned().cloned().collect(),
+                probability,
+                z_score: None,
+                count: None,
+            })
+        }
+    }
+}
+
+impl GeneralizedPattern for DisjointPatterns {
+    fn evaluate(&self, block: &[u8]) -> bool {
+        self.patterns.iter().any(|p| p.evaluate(block))
+    }
+
+    fn forget_count(&mut self) {
+        self.count = None;
+    }
+
+    fn increase_count(&mut self, n: usize) {
+        if let Some(count) = self.count {
+            self.count = Some(count + n);
+        } else {
+            self.count = Some(n);
+        }
+    }
+
+    fn get_count(&self) -> usize {
+        if let Some(count) = self.count {
+            count
+        } else {
+            0
+        }
+    }
+
+    fn z_score(&mut self, sample_size: usize) -> f64 {
+        self.z_score = Some(z_score(sample_size, self.get_count(), self.probability));
+        self.z_score.unwrap()
+    }
+
+    fn get_z_score(&self) -> Option<f64> {
+        self.z_score
+    }
+}
+
+pub(crate) fn best_disjoint_tripple(
+    patterns: &[Pattern],
+    data: &[Vec<u8>],
+) -> Option<DisjointPatterns> {
+    let mut best_tripple: Option<DisjointPatterns> = None;
+    for triple in patterns.iter().combinations(3) {
+        if let Some(mut tr) = DisjointPatterns::new(&triple) {
+            let z = evaluate_pattern(&mut tr, data);
+            if best_tripple.is_none()
+                || f64::abs(best_tripple.as_ref().unwrap().z_score.unwrap()) < f64::abs(z)
+            {
+                best_tripple = Some(tr)
+            }
+        }
+    }
+
+    best_tripple
+}
+
+fn disjoint_patterns(patterns: &[&Pattern]) -> bool {
+    let mut disjoint = true;
+    for ps in patterns.iter().combinations(2) {
+        let mut disjoint_pair = false;
+        for (i, b1) in ps[0].bits.iter().enumerate() {
+            for (j, b2) in ps[1].bits.iter().enumerate() {
+                if b1 == b2 && ps[0].values[i] != ps[1].values[j] {
+                    disjoint_pair = true;
+                    break;
+                }
+            }
+            if disjoint_pair {
+                break;
+            }
+        }
+        if !disjoint_pair {
+            disjoint = false;
+            break;
+        }
+    }
+    disjoint
 }
 
 pub(crate) fn evaluate_pattern<P: GeneralizedPattern + ?Sized>(

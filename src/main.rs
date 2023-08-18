@@ -39,29 +39,57 @@ fn results(
             .partial_cmp(&f64::abs(a.z_score.unwrap()))
             .unwrap()
     });
+    println!("{:?}", final_patterns);
+    let abs_z_1 = f64::abs(final_patterns[0].z_score.unwrap());
     let mut b_double_pattern = best_double_pattern(training_data, &final_patterns);
+    let abs_z_2 = f64::abs(b_double_pattern.z_score.unwrap());
+    let mut abs_z_3: f64 = 0.0;
+    let mut best_triple: DisjointPatterns = DisjointPatterns::new(&[]).unwrap();
+
+    if let Some(best_tr) = best_disjoint_tripple(&final_patterns, training_data) {
+        println!("triple found: {:?}", best_tr);
+        abs_z_3 = f64::abs(best_tr.z_score.unwrap());
+        best_triple = best_tr
+    }
+
     println!("trained in {:.2?}", start.elapsed());
 
     println!(
         "total number of distinguishers evaluated: {}",
         evaluated_disses
     );
-    if f64::abs(final_patterns[0].z_score.unwrap()) > f64::abs(b_double_pattern.z_score.unwrap()) {
-        println!("z-score: {}", final_patterns[0].z_score.unwrap());
-        println!("best pattern: {:?}", final_patterns[0])
-    } else {
+
+    if abs_z_1 > abs_z_2 {
+        if abs_z_1 > abs_z_3 {
+            println!("z-score: {}", final_patterns[0].z_score.unwrap());
+            println!("best pattern: {:?}", final_patterns[0])
+        } else {
+            println!("z-score: {}", best_triple.z_score.unwrap());
+            println!("best pattern: {:?}", best_triple)
+        }
+    } else if abs_z_2 > abs_z_3 {
         println!("z-score: {}", b_double_pattern.z_score.unwrap());
         println!("best double pattern: {:?}", b_double_pattern)
+    } else {
+        println!("z-score: {}", best_triple.z_score.unwrap());
+        println!("best pattern: {:?}", best_triple)
     }
 
     if let Some(testing_data) = testing_data_option {
-        if f64::abs(final_patterns[0].z_score.unwrap())
-            > f64::abs(b_double_pattern.z_score.unwrap())
-        {
-            print_result(&mut final_patterns[0], &testing_data);
-        } else {
+        if abs_z_1 > abs_z_2 {
+            if abs_z_1 > abs_z_3 {
+                print_result(&mut final_patterns[0], &testing_data);
+            } else {
+                print_result(&mut best_triple, &testing_data);
+            }
+            
+        } else if abs_z_2 > abs_z_3 {
             print_result(&mut b_double_pattern, &testing_data);
+        } else {
+            print_result(&mut best_triple, &testing_data);
         }
+           
+        
     }
 }
 
