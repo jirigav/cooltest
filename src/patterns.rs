@@ -117,7 +117,7 @@ impl PartialEq for Pattern {
 pub(crate) struct DoublePattern {
     pattern1: Pattern,
     pattern2: Pattern,
-    probability: f64,
+    pub(crate) probability: f64,
     pub(crate) z_score: Option<f64>,
     count: Option<usize>,
 }
@@ -205,7 +205,7 @@ pub(crate) fn best_double_pattern(data: &[Vec<u8>], patterns: &[Pattern]) -> Dou
 #[derive(Debug)]
 pub(crate) struct DisjointPatterns {
     patterns: Vec<Pattern>,
-    probability: f64,
+    pub(crate) probability: f64,
     pub(crate) z_score: Option<f64>,
     count: Option<usize>,
 }

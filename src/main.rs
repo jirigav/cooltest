@@ -8,8 +8,19 @@ use crate::common::*;
 use crate::fastup::fastup;
 use crate::patterns::*;
 use clap::Parser;
-use std::fmt::Debug;
 use std::time::Instant;
+use pyo3::prelude::*;
+
+
+fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64{
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let scipy = PyModule::import(py, "scipy").unwrap();
+        let result: f64 = scipy.getattr("stats").unwrap().getattr("binom_test").unwrap().call1((positive, sample_size, probability, "two-sided")).unwrap()
+            .extract().unwrap();
+        result
+    })
+}
 
 fn prepare_data(
     data_source: String,
@@ -39,7 +50,7 @@ fn results(
             .partial_cmp(&f64::abs(a.z_score.unwrap()))
             .unwrap()
     });
-    println!("{:?}", final_patterns);
+    
     let abs_z_1 = f64::abs(final_patterns[0].z_score.unwrap());
     let mut b_double_pattern = best_double_pattern(training_data, &final_patterns);
     let abs_z_2 = f64::abs(b_double_pattern.z_score.unwrap());
@@ -78,24 +89,25 @@ fn results(
     if let Some(testing_data) = testing_data_option {
         if abs_z_1 > abs_z_2 {
             if abs_z_1 > abs_z_3 {
-                print_result(&mut final_patterns[0], &testing_data);
+                println!("z-score: {}", evaluate_pattern(&mut final_patterns[0], &testing_data));
+                println!("p-value: {:.0e}", p_value(final_patterns[0].count.unwrap(), testing_data.len(), 2.0_f64.powf(-(final_patterns[0].length as f64))));
             } else {
-                print_result(&mut best_triple, &testing_data);
+                println!("z-score: {}", evaluate_pattern(&mut best_triple, &testing_data));
+                println!("p-value: {:.0e}", p_value(best_triple.get_count(), testing_data.len(), best_triple.probability));
             }
             
         } else if abs_z_2 > abs_z_3 {
-            print_result(&mut b_double_pattern, &testing_data);
+            println!("z-score: {}", evaluate_pattern(&mut b_double_pattern, &testing_data));
+            println!("p-value: {:.0e}", p_value(b_double_pattern.get_count(), testing_data.len(), b_double_pattern.probability));
         } else {
-            print_result(&mut best_triple, &testing_data);
+            println!("z-score: {}", evaluate_pattern(&mut best_triple, &testing_data));
+            println!("p-value: {:.0e}", p_value(best_triple.get_count(), testing_data.len(), best_triple.probability));
         }
            
-        
     }
+ 
 }
 
-fn print_result<P: GeneralizedPattern + Debug>(pattern: &mut P, data: &[Vec<u8>]) {
-    println!("z-score: {}", evaluate_pattern(pattern, data));
-}
 
 fn run_bottomup(data_source: String, block_size: usize, k: usize, min_count: usize, halving: bool) {
     let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
