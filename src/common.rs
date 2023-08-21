@@ -43,7 +43,7 @@ pub(crate) enum Subcommands {
         k: usize,
 
         /// Minimal count of a pattern in data, to be considered.
-        #[arg(short, long, default_value_t = 10)]
+        #[arg(short, long, default_value_t = 50)]
         min_count: usize,
 
         /// Option whether the input data should be halved into training and testing data.
@@ -53,6 +53,30 @@ pub(crate) enum Subcommands {
 
     /// Faster tool for finding frequent patterns, which usually finds weaker distinguishers, but with significantly lower number of tested distinguishers.
     Fastup {
+        /// Path of file with input data.
+        data_source: String,
+
+        /// Length of block of data.
+        #[arg(short, long, default_value_t = 128)]
+        block_size: usize,
+
+        /// Number of explored pattern branches.
+        #[arg(short, long, default_value_t = 10)]
+        k: usize,
+
+        /// Number of bits considered for the patterns.
+        #[arg(short, long, default_value_t = 64)]
+        n: usize,
+
+        /// Minimal count of a pattern in data, to be considered.
+        #[arg(short, long, default_value_t = 50)]
+        min_count: usize,
+
+        /// Option whether the input data should be halved into training and testing data.
+        #[arg(long)]
+        halving: bool,
+    },
+    Polyup {
         /// Path of file with input data.
         data_source: String,
 

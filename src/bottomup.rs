@@ -1,5 +1,5 @@
 use crate::common::*;
-use crate::patterns::*;
+use crate::distinguishers::*;
 use rayon::prelude::*;
 
 fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize) -> Vec<Pattern> {

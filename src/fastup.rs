@@ -1,5 +1,5 @@
 use crate::common::*;
-use crate::patterns::*;
+use crate::distinguishers::*;
 use rayon::prelude::*;
 
 fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
