@@ -114,27 +114,40 @@ impl PartialEq for Pattern {
 }
 
 #[derive(Debug)]
-pub(crate) struct DoublePattern {
-    pattern1: Pattern,
-    pattern2: Pattern,
+pub(crate) struct MultiPattern {
+    patterns: Vec<Pattern>,
     pub(crate) probability: f64,
     pub(crate) z_score: Option<f64>,
     count: Option<usize>,
 }
 
-impl DoublePattern {
-    pub(crate) fn new(pattern1: Pattern, pattern2: Pattern) -> DoublePattern {
-        let mut probability: f64 =
-            2.0_f64.powf(-(pattern1.length as f64)) + 2.0_f64.powf(-(pattern2.length as f64));
+fn union_probability(patterns: &[&Pattern]) -> f64 {
+    if patterns
+        .iter()
+        .combinations(2)
+        .any(|x| disjoint_patterns(&x.into_iter().copied().collect::<Vec<&Pattern>>()))
+    {
+        return 0.0;
+    }
+    let bits: HashSet<usize> = patterns
+        .iter()
+        .flat_map(|x| x.bits.iter().copied())
+        .collect();
+    2.0_f64.powf(-(bits.len() as f64))
+}
 
-        if !disjoint_patterns(&[&pattern1, &pattern2]) {
-            let mut union = pattern1.bits.iter().collect::<HashSet<_>>();
-            union.extend(pattern2.bits.iter());
-            probability -= 2.0_f64.powf(-(union.len() as f64));
+impl MultiPattern {
+    pub(crate) fn new(patterns: Vec<Pattern>) -> MultiPattern {
+        let mut probability: f64 = 0.0;
+        let mut sgn = 1.0;
+        for i in 1..=patterns.len() {
+            for ps in patterns.iter().combinations(i) {
+                probability += sgn * union_probability(&ps);
+            }
+            sgn *= -1.0;
         }
-        DoublePattern {
-            pattern1,
-            pattern2,
+        MultiPattern {
+            patterns,
             probability,
             z_score: None,
             count: None,
@@ -142,9 +155,9 @@ impl DoublePattern {
     }
 }
 
-impl Distinguisher for DoublePattern {
+impl Distinguisher for MultiPattern {
     fn evaluate(&self, block: &[u8]) -> bool {
-        self.pattern1.evaluate(block) || self.pattern2.evaluate(block)
+        self.patterns.iter().any(|p| p.evaluate(block))
     }
 
     fn forget_count(&mut self) {
@@ -177,33 +190,33 @@ impl Distinguisher for DoublePattern {
     }
 }
 
-pub(crate) fn best_double_pattern(data: &[Vec<u8>], patterns: &[Pattern]) -> DoublePattern {
-    let mut best_double_pattern: DoublePattern =
-        DoublePattern::new(patterns[0].clone(), patterns[0].clone());
-    best_double_pattern.z_score = Some(0.0);
-    for i in 0..patterns.len() {
-        for j in i..patterns.len() {
-            let mut double_pattern = DoublePattern::new(patterns[i].clone(), patterns[j].clone());
-
-            double_pattern.increase_count(
-                data.par_iter()
-                    .map(|block| double_pattern.evaluate(block))
-                    .filter(|x| *x)
-                    .count(),
-            );
-
-            let z = double_pattern.z_score(data.len());
-
-            if f64::abs(z) > f64::abs(best_double_pattern.z_score.unwrap()) {
-                best_double_pattern = double_pattern;
-            }
+impl Clone for MultiPattern {
+    fn clone(&self) -> Self {
+        Self {
+            patterns: self.patterns.clone(),
+            probability: self.probability,
+            z_score: None,
+            count: None,
         }
     }
-    best_double_pattern
+}
+
+pub(crate) fn best_multi_pattern(data: &[Vec<u8>], patterns: &[Pattern], n: usize) -> MultiPattern {
+    let mut best_mp: Option<MultiPattern> = None;
+    let mut max_z = 0.0;
+    for ps in patterns.iter().combinations(n) {
+        let mut mp = MultiPattern::new(ps.iter().map(|x| x.to_owned().clone()).collect_vec());
+        mp.count = Some(data.par_iter().filter(|block| mp.evaluate(block)).count());
+        let z = mp.z_score(data.len());
+        if f64::abs(z) > f64::abs(max_z) {
+            best_mp = Some(mp);
+            max_z = z;
+        }
+    }
+    best_mp.unwrap()
 }
 
 fn disjoint_patterns(patterns: &[&Pattern]) -> bool {
-    let mut disjoint = true;
     for ps in patterns.iter().combinations(2) {
         let mut disjoint_pair = false;
         for (i, b1) in ps[0].bits.iter().enumerate() {
@@ -218,11 +231,10 @@ fn disjoint_patterns(patterns: &[&Pattern]) -> bool {
             }
         }
         if !disjoint_pair {
-            disjoint = false;
-            break;
+            return false;
         }
     }
-    disjoint
+    true
 }
 
 pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
@@ -232,8 +244,7 @@ pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
     distinguisher.forget_count();
     distinguisher.increase_count(
         data.iter()
-            .map(|block| distinguisher.evaluate(block))
-            .filter(|x| *x)
+            .filter(|block| distinguisher.evaluate(block))
             .count(),
     );
     distinguisher.z_score(data.len())
@@ -619,29 +630,72 @@ impl Clone for Polynomial {
 
 #[cfg(test)]
 mod tests {
-    use super::DoublePattern;
+    use rand::Rng;
+
+    use super::Distinguisher;
+    use super::MultiPattern;
     use super::Pattern;
     use super::Polynomial;
 
     #[test]
     fn double_pattern_probability() {
-        let dp = DoublePattern::new(
-            Pattern {
-                length: 2,
-                bits: vec![1, 3],
-                values: vec![true, false],
-                count: None,
-                z_score: None,
-            },
-            Pattern {
-                length: 3,
-                bits: vec![0, 1, 2],
-                values: vec![true, true, true],
-                count: None,
-                z_score: None,
-            },
+        let dp = MultiPattern::new(
+            [
+                Pattern {
+                    length: 2,
+                    bits: vec![1, 3],
+                    values: vec![true, false],
+                    count: None,
+                    z_score: None,
+                },
+                Pattern {
+                    length: 3,
+                    bits: vec![0, 1, 2],
+                    values: vec![true, true, true],
+                    count: None,
+                    z_score: None,
+                },
+            ]
+            .to_vec(),
         );
         assert_eq!(5.0 / 16.0, dp.probability);
+    }
+
+    #[test]
+    fn multi_pattern_probability() {
+        for _i in 0..100 {
+            for k in 1..10 {
+                let mut patterns: Vec<Pattern> = Vec::new();
+                for _p in 0..k {
+                    let n_bits = rand::thread_rng().gen_range(1..=16);
+                    let mut bits: Vec<usize> = Vec::new();
+                    let mut values: Vec<bool> = Vec::new();
+                    for _b in 0..n_bits {
+                        let b = rand::thread_rng().gen_range(0..16);
+                        if !bits.contains(&b) {
+                            bits.push(b);
+                            values.push(rand::random());
+                        }
+                    }
+                    let p = Pattern {
+                        length: bits.len(),
+                        bits,
+                        values,
+                        count: None,
+                        z_score: None,
+                    };
+                    patterns.push(p);
+                }
+                let mp = MultiPattern::new(patterns);
+
+                let count = (0..2_usize.pow(16))
+                    .into_iter()
+                    .filter(|x| mp.evaluate(&x.to_le_bytes()))
+                    .count();
+
+                assert_eq!(mp.probability, (count as f64) / 2.0_f64.powf(16.0));
+            }
+        }
     }
 
     #[test]

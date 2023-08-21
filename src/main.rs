@@ -52,16 +52,17 @@ fn results(
     training_data: &[Vec<u8>],
     testing_data_option: Option<Vec<Vec<u8>>>,
     evaluated_disses: usize,
+    patterns_combined: usize,
 ) {
     final_patterns.sort_by(|a, b| {
         f64::abs(b.z_score.unwrap())
             .partial_cmp(&f64::abs(a.z_score.unwrap()))
             .unwrap()
     });
-
     let abs_z_1 = f64::abs(final_patterns[0].z_score.unwrap());
-    let mut b_double_pattern = best_double_pattern(training_data, &final_patterns);
-    let abs_z_2 = f64::abs(b_double_pattern.z_score.unwrap());
+
+    let mut b_multi_pattern = best_multi_pattern(training_data, &final_patterns, patterns_combined);
+    let abs_z_2 = f64::abs(b_multi_pattern.z_score.unwrap());
 
     println!("trained in {:.2?}", start.elapsed());
 
@@ -74,8 +75,8 @@ fn results(
         println!("z-score: {}", final_patterns[0].z_score.unwrap());
         println!("best pattern: {:?}", final_patterns[0])
     } else {
-        println!("z-score: {}", b_double_pattern.z_score.unwrap());
-        println!("best double pattern: {:?}", b_double_pattern)
+        println!("z-score: {}", b_multi_pattern.z_score.unwrap());
+        println!("best multi-pattern: {:?}", b_multi_pattern)
     }
 
     if let Some(testing_data) = testing_data_option {
@@ -95,21 +96,28 @@ fn results(
         } else {
             println!(
                 "z-score: {}",
-                evaluate_distinguisher(&mut b_double_pattern, &testing_data)
+                evaluate_distinguisher(&mut b_multi_pattern, &testing_data)
             );
             println!(
                 "p-value: {:.0e}",
                 p_value(
-                    b_double_pattern.get_count(),
+                    b_multi_pattern.get_count(),
                     testing_data.len(),
-                    b_double_pattern.probability
+                    b_multi_pattern.probability
                 )
             );
         }
     }
 }
 
-fn run_bottomup(data_source: String, block_size: usize, k: usize, min_count: usize, halving: bool) {
+fn run_bottomup(
+    data_source: String,
+    block_size: usize,
+    k: usize,
+    min_count: usize,
+    patterns_combined: usize,
+    halving: bool,
+) {
     let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
 
     let start = Instant::now();
@@ -120,6 +128,7 @@ fn run_bottomup(data_source: String, block_size: usize, k: usize, min_count: usi
         &training_data,
         testing_data_option,
         evaluated_disses,
+        patterns_combined,
     );
 }
 
@@ -129,6 +138,7 @@ fn run_fastup(
     k: usize,
     n: usize,
     min_count: usize,
+    patterns_combined: usize,
     halving: bool,
 ) {
     let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
@@ -141,6 +151,7 @@ fn run_fastup(
         &training_data,
         testing_data_option,
         evaluated_disses,
+        patterns_combined,
     );
 }
 
@@ -202,16 +213,33 @@ fn main() {
             block_size,
             k,
             min_count,
+            patterns_combined,
             halving,
-        } => run_bottomup(data_source, block_size, k, min_count, halving),
+        } => run_bottomup(
+            data_source,
+            block_size,
+            k,
+            min_count,
+            patterns_combined,
+            halving,
+        ),
         Subcommands::Fastup {
             data_source,
             block_size,
             k,
             n,
             min_count,
+            patterns_combined,
             halving,
-        } => run_fastup(data_source, block_size, k, n, min_count, halving),
+        } => run_fastup(
+            data_source,
+            block_size,
+            k,
+            n,
+            min_count,
+            patterns_combined,
+            halving,
+        ),
         Subcommands::Polyup {
             data_source,
             block_size,

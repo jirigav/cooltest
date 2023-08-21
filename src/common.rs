@@ -46,6 +46,10 @@ pub(crate) enum Subcommands {
         #[arg(short, long, default_value_t = 50)]
         min_count: usize,
 
+        /// Number of patterns combined into a multipattern.
+        #[arg(short, long, default_value_t = 2)]
+        patterns_combined: usize,
+
         /// Option whether the input data should be halved into training and testing data.
         #[arg(long)]
         halving: bool,
@@ -71,6 +75,10 @@ pub(crate) enum Subcommands {
         /// Minimal count of a pattern in data, to be considered.
         #[arg(short, long, default_value_t = 50)]
         min_count: usize,
+
+        /// Number of patterns combined into a multipattern.
+        #[arg(short, long, default_value_t = 2)]
+        patterns_combined: usize,
 
         /// Option whether the input data should be halved into training and testing data.
         #[arg(long)]
