@@ -1,14 +1,14 @@
-use crate::common::*;
-use crate::distinguishers::*;
+use crate::common::{bit_value_in_block, z_score};
+use crate::distinguishers::{Distinguisher, Polynomial};
 use rayon::prelude::*;
 
 fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
     let mut counts = vec![0; block_size];
 
-    for block in data.iter() {
+    for block in data {
         for (i, count) in counts.iter_mut().enumerate() {
-            if bit_value_in_block(&i, block) {
-                *count += 1
+            if bit_value_in_block(i, block) {
+                *count += 1;
             }
         }
     }
@@ -18,7 +18,7 @@ fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
         .collect()
 }
 
-fn top_n_bits(zs: Vec<f64>, n: usize) -> Vec<(usize, f64)> {
+fn top_n_bits(zs: &[f64], n: usize) -> Vec<(usize, f64)> {
     let mut top_n = vec![(0, 0.0); n];
 
     for (i, z) in zs.iter().enumerate() {
@@ -30,7 +30,7 @@ fn top_n_bits(zs: Vec<f64>, n: usize) -> Vec<(usize, f64)> {
     top_n
 }
 
-fn new_polys(bit: usize, bit_z: &f64, old_polynomial: &Polynomial) -> Vec<Polynomial> {
+fn new_polys(bit: usize, bit_z: f64, old_polynomial: &Polynomial) -> Vec<Polynomial> {
     let mut testpolynomials = Vec::new();
     if bit_z.signum() == old_polynomial.z_score.unwrap().signum() {
         let mut testpolynomial: Polynomial = old_polynomial.clone();
@@ -61,12 +61,12 @@ fn extend_polynomials(
     for p in best_polynomials {
         let mut best_improving_polynomial: Option<Polynomial> = None;
         for (b, z) in top_bits {
-            if p.contains(b) {
+            if p.contains(*b) {
                 continue;
             }
-            let testpolynomials = new_polys(*b, z, &p);
+            let testpolynomials = new_polys(*b, *z, &p);
 
-            for mut testpolynomial in testpolynomials.into_iter() {
+            for mut testpolynomial in testpolynomials {
                 if new_polynomials.contains(&testpolynomial) {
                     continue;
                 }
@@ -122,7 +122,7 @@ pub(crate) fn polyup(
     let mut evaluated_dises = block_size;
     let zs = basic_zs(data, block_size);
 
-    let top_bits = top_n_bits(zs, n);
+    let top_bits = top_n_bits(&zs, n);
 
     let mut best_polynomials: Vec<Polynomial> = top_bits
         .iter()

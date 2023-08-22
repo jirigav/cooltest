@@ -1,14 +1,14 @@
-use crate::common::*;
-use crate::distinguishers::*;
+use crate::common::{bit_value_in_block, z_score};
+use crate::distinguishers::{Distinguisher, Pattern};
 use rayon::prelude::*;
 
 fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
     let mut counts = vec![0; block_size];
 
-    for block in data.iter() {
+    for block in data {
         for (i, count) in counts.iter_mut().enumerate() {
-            if bit_value_in_block(&i, block) {
-                *count += 1
+            if bit_value_in_block(i, block) {
+                *count += 1;
             }
         }
     }
@@ -18,7 +18,7 @@ fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
         .collect()
 }
 
-fn top_n_bits(zs: Vec<f64>, n: usize) -> Vec<(usize, f64)> {
+fn top_n_bits(zs: &[f64], n: usize) -> Vec<(usize, f64)> {
     let mut top_n = vec![(0, 0.0); n];
 
     for (i, z) in zs.iter().enumerate() {
@@ -30,11 +30,11 @@ fn top_n_bits(zs: Vec<f64>, n: usize) -> Vec<(usize, f64)> {
     top_n
 }
 
-fn z_to_bit_value(z: &f64) -> bool {
+fn z_to_bit_value(z: f64) -> bool {
     z.signum() == 1.0
 }
 
-fn new_pattern(bit: usize, bit_z: &f64, old_pattern: &Pattern) -> Pattern {
+fn new_pattern(bit: usize, bit_z: f64, old_pattern: &Pattern) -> Pattern {
     let mut testpattern: Pattern = old_pattern.clone();
     if bit_z.signum() == old_pattern.z_score.unwrap().signum() {
         testpattern.add_bit(bit, z_to_bit_value(bit_z));
@@ -61,7 +61,7 @@ fn extend_patterns(
             if p.bits.contains(b) {
                 continue;
             }
-            let mut testpattern = new_pattern(*b, z, &p);
+            let mut testpattern = new_pattern(*b, *z, &p);
 
             if new_patterns.contains(&testpattern) {
                 continue;
@@ -106,7 +106,7 @@ pub(crate) fn fastup(
     let mut evaluated_dises = block_size;
     let zs = basic_zs(data, block_size);
 
-    let top_bits = top_n_bits(zs, n);
+    let top_bits = top_n_bits(&zs, n);
 
     let mut best_patterns: Vec<Pattern> = top_bits
         .iter()
@@ -114,7 +114,7 @@ pub(crate) fn fastup(
         .map(|(i, z)| Pattern {
             length: 1,
             bits: vec![*i],
-            values: vec![z_to_bit_value(z)],
+            values: vec![z_to_bit_value(*z)],
             count: None,
             z_score: Some(*z),
         })

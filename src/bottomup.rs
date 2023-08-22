@@ -1,5 +1,5 @@
-use crate::common::*;
-use crate::distinguishers::*;
+use crate::common::{bit_value_in_block, bits_block_eval, z_score};
+use crate::distinguishers::{Distinguisher, Pattern};
 use rayon::prelude::*;
 
 fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize) -> Vec<Pattern> {
@@ -11,7 +11,7 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize) -> Vec<Pattern> {
             let mut hist = [0; 4];
             let a = data
                 .par_iter()
-                .map(|block| bits_block_eval(vec![i, j], block))
+                .map(|block| bits_block_eval(&[i, j], block))
                 .collect::<Vec<_>>();
             for v in a {
                 hist[v] += 1;
@@ -73,7 +73,7 @@ fn improving(
             let mut new_pattern = pattern.clone();
             new_pattern.add_bit(i, v);
             new_pattern.increase_count(count);
-            new_patterns.push(new_pattern)
+            new_patterns.push(new_pattern);
         }
     }
     new_patterns
@@ -100,14 +100,14 @@ fn phase_two(
             hists.push(vec![(0, 0); block_size]);
         }
 
-        for block in data.iter() {
+        for block in data {
             for (i, pattern) in top_k.iter().enumerate() {
                 if pattern.evaluate(block) {
                     for b in 0..block_size {
                         if pattern.bits.contains(&b) {
                             continue;
                         }
-                        if bit_value_in_block(&b, block) {
+                        if bit_value_in_block(b, block) {
                             hists[i][b].1 += 1;
                         } else {
                             hists[i][b].0 += 1;
@@ -129,7 +129,7 @@ fn phase_two(
 
             imp.sort_by_key(|b| std::cmp::Reverse(b.get_count()));
 
-            for p in imp.iter() {
+            for p in &imp {
                 if !new_top_k.contains(p) {
                     new_top_k.push(p.clone());
                     break;

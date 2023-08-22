@@ -1,4 +1,5 @@
-use crate::common::*;
+use crate::common::z_score;
+use crate::constants::BYTE_VECTS;
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::{collections::HashSet, fmt::Debug};
@@ -32,7 +33,7 @@ impl Pattern {
             assert_eq!(
                 value,
                 self.values[self.bits.iter().position(|x| *x == bit).unwrap()]
-            )
+            );
         } else {
             self.length += 1;
 
@@ -55,7 +56,7 @@ impl Distinguisher for Pattern {
     fn evaluate(&self, block: &[u8]) -> bool {
         for (val, b) in self.values.iter().zip(&self.bits) {
             let (byte_index, offset) = (b / 8, b % 8);
-            if (*val as u8) != ((block[byte_index] >> offset) & 1) {
+            if u8::from(*val) != ((block[byte_index] >> offset) & 1) {
                 return false;
             }
         }
@@ -122,11 +123,7 @@ pub(crate) struct MultiPattern {
 }
 
 fn union_probability(patterns: &[&Pattern]) -> f64 {
-    if patterns
-        .iter()
-        .combinations(2)
-        .any(|x| disjoint_patterns(&x.into_iter().copied().collect::<Vec<&Pattern>>()))
-    {
+    if any_pairwise_disjoint_patterns(patterns) {
         return 0.0;
     }
     let bits: HashSet<usize> = patterns
@@ -216,7 +213,7 @@ pub(crate) fn best_multi_pattern(data: &[Vec<u8>], patterns: &[Pattern], n: usiz
     best_mp.unwrap()
 }
 
-fn disjoint_patterns(patterns: &[&Pattern]) -> bool {
+fn any_pairwise_disjoint_patterns(patterns: &[&Pattern]) -> bool {
     for ps in patterns.iter().combinations(2) {
         let mut disjoint_pair = false;
         for (i, b1) in ps[0].bits.iter().enumerate() {
@@ -230,11 +227,11 @@ fn disjoint_patterns(patterns: &[&Pattern]) -> bool {
                 break;
             }
         }
-        if !disjoint_pair {
-            return false;
+        if disjoint_pair {
+            return true;
         }
     }
-    true
+    false
 }
 
 pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
@@ -250,264 +247,6 @@ pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
     distinguisher.z_score(data.len())
 }
 
-const BYTE_VECTS: [[bool; 8]; 256] = [
-    [false, false, false, false, false, false, false, false],
-    [true, false, false, false, false, false, false, false],
-    [false, true, false, false, false, false, false, false],
-    [true, true, false, false, false, false, false, false],
-    [false, false, true, false, false, false, false, false],
-    [true, false, true, false, false, false, false, false],
-    [false, true, true, false, false, false, false, false],
-    [true, true, true, false, false, false, false, false],
-    [false, false, false, true, false, false, false, false],
-    [true, false, false, true, false, false, false, false],
-    [false, true, false, true, false, false, false, false],
-    [true, true, false, true, false, false, false, false],
-    [false, false, true, true, false, false, false, false],
-    [true, false, true, true, false, false, false, false],
-    [false, true, true, true, false, false, false, false],
-    [true, true, true, true, false, false, false, false],
-    [false, false, false, false, true, false, false, false],
-    [true, false, false, false, true, false, false, false],
-    [false, true, false, false, true, false, false, false],
-    [true, true, false, false, true, false, false, false],
-    [false, false, true, false, true, false, false, false],
-    [true, false, true, false, true, false, false, false],
-    [false, true, true, false, true, false, false, false],
-    [true, true, true, false, true, false, false, false],
-    [false, false, false, true, true, false, false, false],
-    [true, false, false, true, true, false, false, false],
-    [false, true, false, true, true, false, false, false],
-    [true, true, false, true, true, false, false, false],
-    [false, false, true, true, true, false, false, false],
-    [true, false, true, true, true, false, false, false],
-    [false, true, true, true, true, false, false, false],
-    [true, true, true, true, true, false, false, false],
-    [false, false, false, false, false, true, false, false],
-    [true, false, false, false, false, true, false, false],
-    [false, true, false, false, false, true, false, false],
-    [true, true, false, false, false, true, false, false],
-    [false, false, true, false, false, true, false, false],
-    [true, false, true, false, false, true, false, false],
-    [false, true, true, false, false, true, false, false],
-    [true, true, true, false, false, true, false, false],
-    [false, false, false, true, false, true, false, false],
-    [true, false, false, true, false, true, false, false],
-    [false, true, false, true, false, true, false, false],
-    [true, true, false, true, false, true, false, false],
-    [false, false, true, true, false, true, false, false],
-    [true, false, true, true, false, true, false, false],
-    [false, true, true, true, false, true, false, false],
-    [true, true, true, true, false, true, false, false],
-    [false, false, false, false, true, true, false, false],
-    [true, false, false, false, true, true, false, false],
-    [false, true, false, false, true, true, false, false],
-    [true, true, false, false, true, true, false, false],
-    [false, false, true, false, true, true, false, false],
-    [true, false, true, false, true, true, false, false],
-    [false, true, true, false, true, true, false, false],
-    [true, true, true, false, true, true, false, false],
-    [false, false, false, true, true, true, false, false],
-    [true, false, false, true, true, true, false, false],
-    [false, true, false, true, true, true, false, false],
-    [true, true, false, true, true, true, false, false],
-    [false, false, true, true, true, true, false, false],
-    [true, false, true, true, true, true, false, false],
-    [false, true, true, true, true, true, false, false],
-    [true, true, true, true, true, true, false, false],
-    [false, false, false, false, false, false, true, false],
-    [true, false, false, false, false, false, true, false],
-    [false, true, false, false, false, false, true, false],
-    [true, true, false, false, false, false, true, false],
-    [false, false, true, false, false, false, true, false],
-    [true, false, true, false, false, false, true, false],
-    [false, true, true, false, false, false, true, false],
-    [true, true, true, false, false, false, true, false],
-    [false, false, false, true, false, false, true, false],
-    [true, false, false, true, false, false, true, false],
-    [false, true, false, true, false, false, true, false],
-    [true, true, false, true, false, false, true, false],
-    [false, false, true, true, false, false, true, false],
-    [true, false, true, true, false, false, true, false],
-    [false, true, true, true, false, false, true, false],
-    [true, true, true, true, false, false, true, false],
-    [false, false, false, false, true, false, true, false],
-    [true, false, false, false, true, false, true, false],
-    [false, true, false, false, true, false, true, false],
-    [true, true, false, false, true, false, true, false],
-    [false, false, true, false, true, false, true, false],
-    [true, false, true, false, true, false, true, false],
-    [false, true, true, false, true, false, true, false],
-    [true, true, true, false, true, false, true, false],
-    [false, false, false, true, true, false, true, false],
-    [true, false, false, true, true, false, true, false],
-    [false, true, false, true, true, false, true, false],
-    [true, true, false, true, true, false, true, false],
-    [false, false, true, true, true, false, true, false],
-    [true, false, true, true, true, false, true, false],
-    [false, true, true, true, true, false, true, false],
-    [true, true, true, true, true, false, true, false],
-    [false, false, false, false, false, true, true, false],
-    [true, false, false, false, false, true, true, false],
-    [false, true, false, false, false, true, true, false],
-    [true, true, false, false, false, true, true, false],
-    [false, false, true, false, false, true, true, false],
-    [true, false, true, false, false, true, true, false],
-    [false, true, true, false, false, true, true, false],
-    [true, true, true, false, false, true, true, false],
-    [false, false, false, true, false, true, true, false],
-    [true, false, false, true, false, true, true, false],
-    [false, true, false, true, false, true, true, false],
-    [true, true, false, true, false, true, true, false],
-    [false, false, true, true, false, true, true, false],
-    [true, false, true, true, false, true, true, false],
-    [false, true, true, true, false, true, true, false],
-    [true, true, true, true, false, true, true, false],
-    [false, false, false, false, true, true, true, false],
-    [true, false, false, false, true, true, true, false],
-    [false, true, false, false, true, true, true, false],
-    [true, true, false, false, true, true, true, false],
-    [false, false, true, false, true, true, true, false],
-    [true, false, true, false, true, true, true, false],
-    [false, true, true, false, true, true, true, false],
-    [true, true, true, false, true, true, true, false],
-    [false, false, false, true, true, true, true, false],
-    [true, false, false, true, true, true, true, false],
-    [false, true, false, true, true, true, true, false],
-    [true, true, false, true, true, true, true, false],
-    [false, false, true, true, true, true, true, false],
-    [true, false, true, true, true, true, true, false],
-    [false, true, true, true, true, true, true, false],
-    [true, true, true, true, true, true, true, false],
-    [false, false, false, false, false, false, false, true],
-    [true, false, false, false, false, false, false, true],
-    [false, true, false, false, false, false, false, true],
-    [true, true, false, false, false, false, false, true],
-    [false, false, true, false, false, false, false, true],
-    [true, false, true, false, false, false, false, true],
-    [false, true, true, false, false, false, false, true],
-    [true, true, true, false, false, false, false, true],
-    [false, false, false, true, false, false, false, true],
-    [true, false, false, true, false, false, false, true],
-    [false, true, false, true, false, false, false, true],
-    [true, true, false, true, false, false, false, true],
-    [false, false, true, true, false, false, false, true],
-    [true, false, true, true, false, false, false, true],
-    [false, true, true, true, false, false, false, true],
-    [true, true, true, true, false, false, false, true],
-    [false, false, false, false, true, false, false, true],
-    [true, false, false, false, true, false, false, true],
-    [false, true, false, false, true, false, false, true],
-    [true, true, false, false, true, false, false, true],
-    [false, false, true, false, true, false, false, true],
-    [true, false, true, false, true, false, false, true],
-    [false, true, true, false, true, false, false, true],
-    [true, true, true, false, true, false, false, true],
-    [false, false, false, true, true, false, false, true],
-    [true, false, false, true, true, false, false, true],
-    [false, true, false, true, true, false, false, true],
-    [true, true, false, true, true, false, false, true],
-    [false, false, true, true, true, false, false, true],
-    [true, false, true, true, true, false, false, true],
-    [false, true, true, true, true, false, false, true],
-    [true, true, true, true, true, false, false, true],
-    [false, false, false, false, false, true, false, true],
-    [true, false, false, false, false, true, false, true],
-    [false, true, false, false, false, true, false, true],
-    [true, true, false, false, false, true, false, true],
-    [false, false, true, false, false, true, false, true],
-    [true, false, true, false, false, true, false, true],
-    [false, true, true, false, false, true, false, true],
-    [true, true, true, false, false, true, false, true],
-    [false, false, false, true, false, true, false, true],
-    [true, false, false, true, false, true, false, true],
-    [false, true, false, true, false, true, false, true],
-    [true, true, false, true, false, true, false, true],
-    [false, false, true, true, false, true, false, true],
-    [true, false, true, true, false, true, false, true],
-    [false, true, true, true, false, true, false, true],
-    [true, true, true, true, false, true, false, true],
-    [false, false, false, false, true, true, false, true],
-    [true, false, false, false, true, true, false, true],
-    [false, true, false, false, true, true, false, true],
-    [true, true, false, false, true, true, false, true],
-    [false, false, true, false, true, true, false, true],
-    [true, false, true, false, true, true, false, true],
-    [false, true, true, false, true, true, false, true],
-    [true, true, true, false, true, true, false, true],
-    [false, false, false, true, true, true, false, true],
-    [true, false, false, true, true, true, false, true],
-    [false, true, false, true, true, true, false, true],
-    [true, true, false, true, true, true, false, true],
-    [false, false, true, true, true, true, false, true],
-    [true, false, true, true, true, true, false, true],
-    [false, true, true, true, true, true, false, true],
-    [true, true, true, true, true, true, false, true],
-    [false, false, false, false, false, false, true, true],
-    [true, false, false, false, false, false, true, true],
-    [false, true, false, false, false, false, true, true],
-    [true, true, false, false, false, false, true, true],
-    [false, false, true, false, false, false, true, true],
-    [true, false, true, false, false, false, true, true],
-    [false, true, true, false, false, false, true, true],
-    [true, true, true, false, false, false, true, true],
-    [false, false, false, true, false, false, true, true],
-    [true, false, false, true, false, false, true, true],
-    [false, true, false, true, false, false, true, true],
-    [true, true, false, true, false, false, true, true],
-    [false, false, true, true, false, false, true, true],
-    [true, false, true, true, false, false, true, true],
-    [false, true, true, true, false, false, true, true],
-    [true, true, true, true, false, false, true, true],
-    [false, false, false, false, true, false, true, true],
-    [true, false, false, false, true, false, true, true],
-    [false, true, false, false, true, false, true, true],
-    [true, true, false, false, true, false, true, true],
-    [false, false, true, false, true, false, true, true],
-    [true, false, true, false, true, false, true, true],
-    [false, true, true, false, true, false, true, true],
-    [true, true, true, false, true, false, true, true],
-    [false, false, false, true, true, false, true, true],
-    [true, false, false, true, true, false, true, true],
-    [false, true, false, true, true, false, true, true],
-    [true, true, false, true, true, false, true, true],
-    [false, false, true, true, true, false, true, true],
-    [true, false, true, true, true, false, true, true],
-    [false, true, true, true, true, false, true, true],
-    [true, true, true, true, true, false, true, true],
-    [false, false, false, false, false, true, true, true],
-    [true, false, false, false, false, true, true, true],
-    [false, true, false, false, false, true, true, true],
-    [true, true, false, false, false, true, true, true],
-    [false, false, true, false, false, true, true, true],
-    [true, false, true, false, false, true, true, true],
-    [false, true, true, false, false, true, true, true],
-    [true, true, true, false, false, true, true, true],
-    [false, false, false, true, false, true, true, true],
-    [true, false, false, true, false, true, true, true],
-    [false, true, false, true, false, true, true, true],
-    [true, true, false, true, false, true, true, true],
-    [false, false, true, true, false, true, true, true],
-    [true, false, true, true, false, true, true, true],
-    [false, true, true, true, false, true, true, true],
-    [true, true, true, true, false, true, true, true],
-    [false, false, false, false, true, true, true, true],
-    [true, false, false, false, true, true, true, true],
-    [false, true, false, false, true, true, true, true],
-    [true, true, false, false, true, true, true, true],
-    [false, false, true, false, true, true, true, true],
-    [true, false, true, false, true, true, true, true],
-    [false, true, true, false, true, true, true, true],
-    [true, true, true, false, true, true, true, true],
-    [false, false, false, true, true, true, true, true],
-    [true, false, false, true, true, true, true, true],
-    [false, true, false, true, true, true, true, true],
-    [true, true, false, true, true, true, true, true],
-    [false, false, true, true, true, true, true, true],
-    [true, false, true, true, true, true, true, true],
-    [false, true, true, true, true, true, true, true],
-    [true, true, true, true, true, true, true, true],
-];
 pub(crate) struct Polynomial {
     pub(crate) monomials: Vec<Vec<usize>>,
     used_variables: HashSet<usize>,
@@ -528,8 +267,8 @@ impl Polynomial {
     }
 
     fn sort(&mut self) {
-        self.monomials.sort();
-        self.monomials.iter_mut().for_each(|x| x.sort());
+        self.monomials.sort_unstable();
+        self.monomials.iter_mut().for_each(|x| x.sort_unstable());
     }
 
     pub(crate) fn negate(&mut self) {
@@ -538,8 +277,8 @@ impl Polynomial {
         self.sort();
     }
 
-    pub(crate) fn contains(&self, variable: &usize) -> bool {
-        self.used_variables.contains(variable)
+    pub(crate) fn contains(&self, variable: usize) -> bool {
+        self.used_variables.contains(&variable)
     }
 
     fn xor(&mut self, monomial: Vec<usize>) {
@@ -574,7 +313,7 @@ impl Distinguisher for Polynomial {
             .flat_map(|i| BYTE_VECTS[block[i] as usize])
             .collect::<Vec<bool>>();
         let mut result = false;
-        for m in self.monomials.iter() {
+        for m in &self.monomials {
             result ^= m.iter().all(|x| bit_values[*x]);
         }
         result
@@ -689,7 +428,6 @@ mod tests {
                 let mp = MultiPattern::new(patterns);
 
                 let count = (0..2_usize.pow(16))
-                    .into_iter()
                     .filter(|x| mp.evaluate(&x.to_le_bytes()))
                     .count();
 

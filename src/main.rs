@@ -1,12 +1,13 @@
 mod bottomup;
 mod common;
+mod constants;
 mod distinguishers;
 mod fastup;
 mod polyup;
 
 use crate::bottomup::bottomup;
-use crate::common::*;
-use crate::distinguishers::*;
+use crate::common::{load_data, shuffle_data, Args, Subcommands};
+use crate::distinguishers::{best_multi_pattern, evaluate_distinguisher, Distinguisher, Pattern};
 use crate::fastup::fastup;
 use crate::polyup::polyup;
 use clap::Parser;
@@ -31,11 +32,11 @@ fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
 }
 
 fn prepare_data(
-    data_source: String,
+    data_source: &str,
     block_size: usize,
     halving: bool,
 ) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>) {
-    let mut training_data = load_data(&data_source, block_size);
+    let mut training_data = load_data(data_source, block_size);
     let mut testing_data_option = None;
 
     if halving {
@@ -66,17 +67,14 @@ fn results(
 
     println!("trained in {:.2?}", start.elapsed());
 
-    println!(
-        "total number of distinguishers evaluated: {}",
-        evaluated_disses
-    );
+    println!("total number of distinguishers evaluated: {evaluated_disses}");
 
     if abs_z_1 > abs_z_2 {
         println!("z-score: {}", final_patterns[0].z_score.unwrap());
-        println!("best pattern: {:?}", final_patterns[0])
+        println!("best pattern: {:?}", final_patterns[0]);
     } else {
         println!("z-score: {}", b_multi_pattern.z_score.unwrap());
-        println!("best multi-pattern: {:?}", b_multi_pattern)
+        println!("best multi-pattern: {b_multi_pattern:?}");
     }
 
     if let Some(testing_data) = testing_data_option {
@@ -111,7 +109,7 @@ fn results(
 }
 
 fn run_bottomup(
-    data_source: String,
+    data_source: &str,
     block_size: usize,
     k: usize,
     min_count: usize,
@@ -133,7 +131,7 @@ fn run_bottomup(
 }
 
 fn run_fastup(
-    data_source: String,
+    data_source: &str,
     block_size: usize,
     k: usize,
     n: usize,
@@ -156,7 +154,7 @@ fn run_fastup(
 }
 
 fn run_polyup(
-    data_source: String,
+    data_source: &str,
     block_size: usize,
     k: usize,
     n: usize,
@@ -216,7 +214,7 @@ fn main() {
             patterns_combined,
             halving,
         } => run_bottomup(
-            data_source,
+            &data_source,
             block_size,
             k,
             min_count,
@@ -232,7 +230,7 @@ fn main() {
             patterns_combined,
             halving,
         } => run_fastup(
-            data_source,
+            &data_source,
             block_size,
             k,
             n,
@@ -247,6 +245,6 @@ fn main() {
             n,
             min_count,
             halving,
-        } => run_polyup(data_source, block_size, k, n, min_count, halving),
+        } => run_polyup(&data_source, block_size, k, n, min_count, halving),
     }
 }

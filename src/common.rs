@@ -84,6 +84,7 @@ pub(crate) enum Subcommands {
         #[arg(long)]
         halving: bool,
     },
+    /// Tool similar to fastup, but with distinguishers constructed as boolean polynomials.
     Polyup {
         /// Path of file with input data.
         data_source: String,
@@ -110,17 +111,17 @@ pub(crate) enum Subcommands {
     },
 }
 
-pub(crate) fn bit_value_in_block(bit: &usize, block: &[u8]) -> bool {
+pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
     let (byte_index, offset) = (bit / 8, bit % 8);
     ((block[byte_index] >> offset) & 1) == 1
 }
 
-pub(crate) fn bits_block_eval(bits: Vec<usize>, block: &[u8]) -> usize {
+pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
     let mut result = 0;
 
     for (i, b) in bits.iter().enumerate() {
-        if bit_value_in_block(b, block) {
-            result += 2_usize.pow(i as u32)
+        if bit_value_in_block(*b, block) {
+            result += 2_usize.pow(i as u32);
         }
     }
     result
@@ -131,7 +132,7 @@ pub(crate) fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
     fs::read(path)
         .unwrap()
         .chunks(len_of_block_in_bytes)
-        .map(|x| x.to_vec())
+        .map(<[u8]>::to_vec)
         .collect()
 }
 
