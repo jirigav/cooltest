@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::common::{bit_value_in_block, bits_block_eval, z_score};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
@@ -11,10 +13,10 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
                 .collect_vec()
         })
         .collect_vec();
-    let mut best_pairs = vec![(0, (Vec::new(), Vec::new())); k];
-
+    let mut best_patterns = vec![(0, (Vec::new(), Vec::new())); k];
+    let mut hist = vec![0; 2_usize.pow(base_degree as u32)];
     for bits in (0..block_size).combinations(base_degree) {
-        let mut hist = vec![0; 2_usize.pow(base_degree as u32)];
+        hist.iter_mut().for_each(|x| *x = 0);
         let a = data
             .par_iter()
             .map(|block| bits_block_eval(&bits, block))
@@ -23,19 +25,20 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
             hist[v] += 1;
         }
         let max_count = hist.iter().max().unwrap();
-        if max_count > &best_pairs[k - 1].0 {
-            best_pairs[k - 1] = (
+
+        if max_count > &best_patterns[k - 1].0 {
+            best_patterns[k - 1] = (
                 *max_count,
                 (
                     bits,
                     m[hist.iter().position(|x| x == max_count).unwrap()].clone(),
                 ),
             );
-            best_pairs.sort_by(|a, b| b.0.cmp(&a.0));
+            best_patterns.sort_unstable_by(|a, b| b.0.cmp(&a.0));
         }
     }
 
-    best_pairs
+    best_patterns
         .into_iter()
         .map(|(count, (bits, values))| Pattern {
             length: base_degree,
@@ -49,8 +52,9 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
 
 fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: usize) -> bool {
     let p_new = 2_f64.powf(-(new_length as f64));
-
-    f64::abs(old_z_score) <= f64::abs(z_score(samples, count_new, p_new))
+    let abs_old = f64::abs(old_z_score);
+    let abs_new = f64::abs(z_score(samples, count_new, p_new));
+    abs_old <= abs_new // || (abs_new/abs_old > 0.9 && rand::random())
 }
 
 fn improving(
@@ -133,7 +137,7 @@ fn phase_two(
                 continue;
             }
 
-            imp.sort_by_key(|b| std::cmp::Reverse(b.get_count()));
+            imp.sort_unstable_by_key(|b| std::cmp::Reverse(b.get_count()));
 
             for p in &imp {
                 if !new_top_k.contains(p) {
@@ -155,6 +159,11 @@ pub(crate) fn bottomup(
     min_count: usize,
     base_degree: usize,
 ) -> Vec<Pattern> {
+    let mut start = Instant::now();
     let top_k = phase_one(data, k, block_size, base_degree);
-    phase_two(k, top_k, data, min_count, block_size)
+    println!("phase one {:.2?}", start.elapsed());
+    start = Instant::now();
+    let r = phase_two(k, top_k, data, min_count, block_size);
+    println!("phase two {:.2?}", start.elapsed());
+    r
 }
