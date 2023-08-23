@@ -2,13 +2,11 @@ mod bottomup;
 mod common;
 mod constants;
 mod distinguishers;
-mod fastup;
 mod polyup;
 
 use crate::bottomup::bottomup;
 use crate::common::{load_data, shuffle_data, Args, Subcommands};
 use crate::distinguishers::{best_multi_pattern, evaluate_distinguisher, Distinguisher, Pattern};
-use crate::fastup::fastup;
 use crate::polyup::polyup;
 use clap::Parser;
 use pyo3::prelude::*;
@@ -52,7 +50,6 @@ fn results(
     start: Instant,
     training_data: &[Vec<u8>],
     testing_data_option: Option<Vec<Vec<u8>>>,
-    evaluated_disses: usize,
     patterns_combined: usize,
 ) {
     final_patterns.sort_by(|a, b| {
@@ -66,8 +63,6 @@ fn results(
     let abs_z_2 = f64::abs(b_multi_pattern.z_score.unwrap());
 
     println!("trained in {:.2?}", start.elapsed());
-
-    println!("total number of distinguishers evaluated: {evaluated_disses}");
 
     if abs_z_1 > abs_z_2 {
         println!("z-score: {}", final_patterns[0].z_score.unwrap());
@@ -114,41 +109,18 @@ fn run_bottomup(
     k: usize,
     min_count: usize,
     patterns_combined: usize,
+    base_pattern_size: usize,
     halving: bool,
 ) {
     let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
 
     let start = Instant::now();
-    let (final_patterns, evaluated_disses) = bottomup(&training_data, block_size, k, min_count);
+    let final_patterns = bottomup(&training_data, block_size, k, min_count, base_pattern_size);
     results(
         final_patterns,
         start,
         &training_data,
         testing_data_option,
-        evaluated_disses,
-        patterns_combined,
-    );
-}
-
-fn run_fastup(
-    data_source: &str,
-    block_size: usize,
-    k: usize,
-    n: usize,
-    min_count: usize,
-    patterns_combined: usize,
-    halving: bool,
-) {
-    let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
-
-    let start = Instant::now();
-    let (final_patterns, evaluated_disses) = fastup(&training_data, block_size, n, k, min_count);
-    results(
-        final_patterns,
-        start,
-        &training_data,
-        testing_data_option,
-        evaluated_disses,
         patterns_combined,
     );
 }
@@ -212,6 +184,7 @@ fn main() {
             k,
             min_count,
             patterns_combined,
+            base_pattern_size,
             halving,
         } => run_bottomup(
             &data_source,
@@ -219,23 +192,7 @@ fn main() {
             k,
             min_count,
             patterns_combined,
-            halving,
-        ),
-        Subcommands::Fastup {
-            data_source,
-            block_size,
-            k,
-            n,
-            min_count,
-            patterns_combined,
-            halving,
-        } => run_fastup(
-            &data_source,
-            block_size,
-            k,
-            n,
-            min_count,
-            patterns_combined,
+            base_pattern_size,
             halving,
         ),
         Subcommands::Polyup {

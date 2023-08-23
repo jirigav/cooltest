@@ -1,38 +1,46 @@
 use crate::common::{bit_value_in_block, bits_block_eval, z_score};
 use crate::distinguishers::{Distinguisher, Pattern};
+use itertools::Itertools;
 use rayon::prelude::*;
 
-fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize) -> Vec<Pattern> {
-    let m = [(false, false), (true, false), (false, true), (true, true)];
-    let mut best_pairs = vec![(0, ((0, 0), (false, false))); k];
+fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
+    let m = (0..2_usize.pow(base_degree as u32))
+        .map(|x| {
+            (0..base_degree)
+                .map(|i| bit_value_in_block(i, &[x as u8]))
+                .collect_vec()
+        })
+        .collect_vec();
+    let mut best_pairs = vec![(0, (Vec::new(), Vec::new())); k];
 
-    for i in 0..block_size {
-        for j in (i + 1)..block_size {
-            let mut hist = [0; 4];
-            let a = data
-                .par_iter()
-                .map(|block| bits_block_eval(&[i, j], block))
-                .collect::<Vec<_>>();
-            for v in a {
-                hist[v] += 1;
-            }
-
-            let max_count = hist.iter().max().unwrap();
-            if max_count > &best_pairs[k - 1].0 {
-                best_pairs[k - 1] = (
-                    *max_count,
-                    ((i, j), m[hist.iter().position(|x| x == max_count).unwrap()]),
-                );
-                best_pairs.sort_by(|a, b| b.0.cmp(&a.0));
-            }
+    for bits in (0..block_size).combinations(base_degree) {
+        let mut hist = vec![0; 2_usize.pow(base_degree as u32)];
+        let a = data
+            .par_iter()
+            .map(|block| bits_block_eval(&bits, block))
+            .collect::<Vec<_>>();
+        for v in a {
+            hist[v] += 1;
+        }
+        let max_count = hist.iter().max().unwrap();
+        if max_count > &best_pairs[k - 1].0 {
+            best_pairs[k - 1] = (
+                *max_count,
+                (
+                    bits,
+                    m[hist.iter().position(|x| x == max_count).unwrap()].clone(),
+                ),
+            );
+            best_pairs.sort_by(|a, b| b.0.cmp(&a.0));
         }
     }
+
     best_pairs
         .into_iter()
-        .map(|(count, ((i, j), (a, b)))| Pattern {
-            length: 2,
-            bits: vec![i, j],
-            values: vec![a, b],
+        .map(|(count, (bits, values))| Pattern {
+            length: base_degree,
+            bits,
+            values,
             count: Some(count),
             z_score: None,
         })
@@ -85,7 +93,6 @@ fn phase_two(
     data: &[Vec<u8>],
     min_count: usize,
     block_size: usize,
-    evaluated_dises: &mut usize,
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
 
@@ -94,8 +101,7 @@ fn phase_two(
     while !top_k.is_empty() && pattern_len < block_size {
         pattern_len += 1;
 
-        let mut hists: Vec<Vec<(usize, usize)>> = Vec::new();
-        *evaluated_dises += 2 * top_k.len() * (block_size - pattern_len + 1);
+        let mut hists: Vec<Vec<(usize, usize)>> = Vec::with_capacity(top_k.len());
         for _ in 0..top_k.len() {
             hists.push(vec![(0, 0); block_size]);
         }
@@ -117,7 +123,7 @@ fn phase_two(
             }
         }
 
-        let mut new_top_k: Vec<Pattern> = Vec::new();
+        let mut new_top_k: Vec<Pattern> = Vec::with_capacity(top_k.len());
 
         for i in 0..hists.len() {
             let mut imp = improving(&mut top_k[i], &hists[i], data.len(), min_count);
@@ -147,11 +153,8 @@ pub(crate) fn bottomup(
     block_size: usize,
     k: usize,
     min_count: usize,
-) -> (Vec<Pattern>, usize) {
-    let mut evaluated_dises = 2 * block_size * (block_size - 1); // 4*(bock_size choose 2)
-    let top_k = phase_one(data, k, block_size);
-    (
-        phase_two(k, top_k, data, min_count, block_size, &mut evaluated_dises),
-        evaluated_dises,
-    )
+    base_degree: usize,
+) -> Vec<Pattern> {
+    let top_k = phase_one(data, k, block_size, base_degree);
+    phase_two(k, top_k, data, min_count, block_size)
 }
