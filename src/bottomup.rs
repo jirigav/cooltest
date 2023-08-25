@@ -14,16 +14,23 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
         })
         .collect_vec();
     let mut best_patterns = vec![(0, (Vec::new(), Vec::new())); k];
-    let mut hist = vec![0; 2_usize.pow(base_degree as u32)];
+
     for bits in (0..block_size).combinations(base_degree) {
-        hist.iter_mut().for_each(|x| *x = 0);
-        let a = data
+        let hist = data
             .par_iter()
             .map(|block| bits_block_eval(&bits, block))
-            .collect::<Vec<_>>();
-        for v in a {
-            hist[v] += 1;
-        }
+            .fold_with(vec![0; 2_usize.pow(base_degree as u32)], |mut a, b| {
+                a[b] += 1;
+                a
+            })
+            .reduce(
+                || vec![0; 2_usize.pow(base_degree as u32)],
+                |mut a: Vec<usize>, b: Vec<usize>| {
+                    a = a.iter_mut().zip(b).map(|(a, b)| *a + b).collect();
+                    a
+                },
+            );
+
         let max_count = hist.iter().max().unwrap();
 
         if max_count > &best_patterns[k - 1].0 {
@@ -57,6 +64,18 @@ fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: 
     abs_old <= abs_new // || (abs_new/abs_old > 0.9 && rand::random())
 }
 
+#[allow(dead_code)]
+fn surpriseness_level(count: usize, length: usize, samples: usize) -> f64 {
+    let p = 2_f64.powf(-(length as f64));
+    let expected = p * (samples as f64);
+    if (count as f64) >= expected.ceil() {
+        -f64::log2(p)*((count as f64) - expected.ceil())
+    } else{
+        -f64::log10(p)*(expected.floor() - (count as f64))
+    }
+    
+}
+
 fn improving(
     pattern: &mut Pattern,
     hist: &[(usize, usize)],
@@ -78,10 +97,12 @@ fn improving(
             count = counts.1;
             v = true;
         }
-
+        //let sp = surpriseness_level(count, pattern.length + 1, samples);
         if is_improving(pattern.z_score.unwrap(), count, pattern.length + 1, samples)
             && count >= min_count
+   //         && sp > 3500.0
         {
+           // println!("{sp}");
             let mut new_pattern = pattern.clone();
             new_pattern.add_bit(i, v);
             new_pattern.increase_count(count);

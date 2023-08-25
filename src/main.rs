@@ -1,6 +1,5 @@
 mod bottomup;
 mod common;
-mod constants;
 mod distinguishers;
 mod polyup;
 
@@ -150,6 +149,7 @@ fn run_polyup(
         testing_data_option,
         evaluated_disses,
     );*/
+    println!("{:?}", final_patterns);
     println!("{:?}", final_patterns[0].monomials);
     println!("{}", final_patterns[0].z_score.unwrap());
 

@@ -1,7 +1,7 @@
-use crate::common::z_score;
-use crate::constants::BYTE_VECTS;
+use crate::common::{z_score, bit_value_in_block};
 use itertools::Itertools;
 use rayon::prelude::*;
+use core::fmt;
 use std::{collections::HashSet, fmt::Debug};
 
 pub(crate) trait Distinguisher {
@@ -111,6 +111,12 @@ impl Clone for Pattern {
 impl PartialEq for Pattern {
     fn eq(&self, other: &Self) -> bool {
         self.bits == other.bits && self.values == other.values
+    }
+}
+
+impl fmt::Display for Pattern{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Bits: {:?}\nValues: {:?}\n", self.bits, self.values)
     }
 }
 
@@ -247,6 +253,7 @@ pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
     distinguisher.z_score(data.len())
 }
 
+#[derive(Debug)]
 pub(crate) struct Polynomial {
     pub(crate) monomials: Vec<Vec<usize>>,
     used_variables: HashSet<usize>,
@@ -309,12 +316,9 @@ impl Polynomial {
 }
 impl Distinguisher for Polynomial {
     fn evaluate(&self, block: &[u8]) -> bool {
-        let bit_values = (0..(block.len()))
-            .flat_map(|i| BYTE_VECTS[block[i] as usize])
-            .collect::<Vec<bool>>();
         let mut result = false;
         for m in &self.monomials {
-            result ^= m.iter().all(|x| bit_values[*x]);
+            result ^= m.iter().all(|x| bit_value_in_block(*x, block));
         }
         result
     }
