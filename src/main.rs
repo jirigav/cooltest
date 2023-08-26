@@ -56,49 +56,27 @@ fn results(
             .partial_cmp(&f64::abs(a.z_score.unwrap()))
             .unwrap()
     });
-    let abs_z_1 = f64::abs(final_patterns[0].z_score.unwrap());
 
     let mut b_multi_pattern = best_multi_pattern(training_data, &final_patterns, patterns_combined);
-    let abs_z_2 = f64::abs(b_multi_pattern.z_score.unwrap());
 
     println!("trained in {:.2?}", start.elapsed());
 
-    if abs_z_1 > abs_z_2 {
-        println!("z-score: {}", final_patterns[0].z_score.unwrap());
-        println!("best pattern: {:?}", final_patterns[0]);
-    } else {
-        println!("z-score: {}", b_multi_pattern.z_score.unwrap());
-        println!("best multi-pattern: {b_multi_pattern:?}");
-    }
+    println!("z-score: {}", b_multi_pattern.z_score.unwrap());
+    println!("best multi-pattern: {b_multi_pattern:?}");
 
     if let Some(testing_data) = testing_data_option {
-        if abs_z_1 > abs_z_2 {
-            println!(
-                "z-score: {}",
-                evaluate_distinguisher(&mut final_patterns[0], &testing_data)
-            );
-            println!(
-                "p-value: {:.0e}",
-                p_value(
-                    final_patterns[0].count.unwrap(),
-                    testing_data.len(),
-                    2.0_f64.powf(-(final_patterns[0].length as f64))
-                )
-            );
-        } else {
-            println!(
-                "z-score: {}",
-                evaluate_distinguisher(&mut b_multi_pattern, &testing_data)
-            );
-            println!(
-                "p-value: {:.0e}",
-                p_value(
-                    b_multi_pattern.get_count(),
-                    testing_data.len(),
-                    b_multi_pattern.probability
-                )
-            );
-        }
+        println!(
+            "z-score: {}",
+            evaluate_distinguisher(&mut b_multi_pattern, &testing_data)
+        );
+        println!(
+            "p-value: {:.0e}",
+            p_value(
+                b_multi_pattern.get_count(),
+                testing_data.len(),
+                b_multi_pattern.probability
+            )
+        );
     }
 }
 
@@ -135,21 +113,14 @@ fn run_polyup(
     let (training_data, testing_data_option) = prepare_data(data_source, block_size, halving);
 
     let _start = Instant::now();
-    let (mut final_patterns, _evaluated_disses) =
-        polyup(&training_data, block_size, n, k, min_count);
+    let mut final_patterns = polyup(&training_data, block_size, n, k, min_count);
     final_patterns.sort_by(|a, b| {
         f64::abs(b.z_score.unwrap())
             .partial_cmp(&f64::abs(a.z_score.unwrap()))
             .unwrap()
     });
-    /* results(
-        final_patterns,
-        start,
-        &training_data,
-        testing_data_option,
-        evaluated_disses,
-    );*/
-    println!("{:?}", final_patterns);
+
+    //println!("{final_patterns:?}");
     println!("{:?}", final_patterns[0].monomials);
     println!("{}", final_patterns[0].z_score.unwrap());
 

@@ -1,7 +1,7 @@
-use crate::common::{z_score, bit_value_in_block};
+use crate::common::{bit_value_in_block, z_score};
+use core::fmt;
 use itertools::Itertools;
 use rayon::prelude::*;
-use core::fmt;
 use std::{collections::HashSet, fmt::Debug};
 
 pub(crate) trait Distinguisher {
@@ -114,7 +114,7 @@ impl PartialEq for Pattern {
     }
 }
 
-impl fmt::Display for Pattern{
+impl fmt::Display for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Bits: {:?}\nValues: {:?}\n", self.bits, self.values)
     }

@@ -6,10 +6,10 @@ use itertools::Itertools;
 use rayon::prelude::*;
 
 fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
-    let m = (0..2_usize.pow(base_degree as u32))
+    let m = (0..2_u8.pow(base_degree as u32))
         .map(|x| {
             (0..base_degree)
-                .map(|i| bit_value_in_block(i, &[x as u8]))
+                .map(|i| bit_value_in_block(i, &[x]))
                 .collect_vec()
         })
         .collect_vec();
@@ -69,11 +69,10 @@ fn surpriseness_level(count: usize, length: usize, samples: usize) -> f64 {
     let p = 2_f64.powf(-(length as f64));
     let expected = p * (samples as f64);
     if (count as f64) >= expected.ceil() {
-        -f64::log2(p)*((count as f64) - expected.ceil())
-    } else{
-        -f64::log10(p)*(expected.floor() - (count as f64))
+        -f64::log2(p) * ((count as f64) - expected.ceil())
+    } else {
+        -f64::log10(p) * (expected.floor() - (count as f64))
     }
-    
 }
 
 fn improving(
@@ -100,9 +99,9 @@ fn improving(
         //let sp = surpriseness_level(count, pattern.length + 1, samples);
         if is_improving(pattern.z_score.unwrap(), count, pattern.length + 1, samples)
             && count >= min_count
-   //         && sp > 3500.0
+        //         && sp > 3500.0
         {
-           // println!("{sp}");
+            // println!("{sp}");
             let mut new_pattern = pattern.clone();
             new_pattern.add_bit(i, v);
             new_pattern.increase_count(count);

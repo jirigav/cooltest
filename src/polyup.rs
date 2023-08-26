@@ -54,47 +54,43 @@ fn extend_polynomials(
     data: &[Vec<u8>],
     min_count: usize,
     final_polynomials: &mut Vec<Polynomial>,
-    evaluated_dises: &mut usize,
 ) -> Vec<Polynomial> {
-    let mut new_polynomials = Vec::new();
+    let mut new_polynomials: Vec<Polynomial> = Vec::new();
 
     for p in best_polynomials {
         let mut best_improving_polynomial: Option<Polynomial> = None;
-        for (b, z) in top_bits {
-            if p.contains(*b) {
+
+        let mut testpolynomials: Vec<Polynomial> = top_bits
+            .par_iter()
+            .filter(|(b, _z)| !p.contains(*b))
+            .flat_map(|(b, z)| new_polys(*b, *z, &p))
+            .filter(|poly| !new_polynomials.contains(poly))
+            .collect();
+
+        testpolynomials.par_iter_mut().for_each(|poly| {
+            poly.increase_count(data.par_iter().filter(|block| poly.evaluate(block)).count());
+            poly.z_score(data.len());
+        });
+        for testpolynomial in testpolynomials {
+            let new_z = testpolynomial.get_z_score().unwrap();
+
+            if f64::abs(new_z) < f64::abs(p.z_score.unwrap())
+                || testpolynomial
+                    .get_count()
+                    .abs_diff((testpolynomial.probability * (data.len() as f64)) as usize)
+                    < min_count
+            {
                 continue;
             }
-            let testpolynomials = new_polys(*b, *z, &p);
 
-            for mut testpolynomial in testpolynomials {
-                if new_polynomials.contains(&testpolynomial) {
-                    continue;
-                }
-                *evaluated_dises += 1;
-                testpolynomial.increase_count(
-                    data.par_iter()
-                        .filter(|block| testpolynomial.evaluate(block))
-                        .count(),
-                );
-                let new_z = testpolynomial.z_score(data.len());
-
-                if f64::abs(new_z) < f64::abs(p.z_score.unwrap())
-                    || testpolynomial
-                        .get_count()
-                        .abs_diff((testpolynomial.probability * (data.len() as f64)) as usize)
-                        < min_count
-                {
-                    continue;
-                }
-
-                if best_improving_polynomial.is_none()
-                    || f64::abs(best_improving_polynomial.as_ref().unwrap().z_score.unwrap())
-                        < f64::abs(new_z)
-                {
-                    best_improving_polynomial = Some(testpolynomial);
-                }
+            if best_improving_polynomial.is_none()
+                || f64::abs(best_improving_polynomial.as_ref().unwrap().z_score.unwrap())
+                    < f64::abs(new_z)
+            {
+                best_improving_polynomial = Some(testpolynomial);
             }
         }
+
         if let Some(imp_polynomial) = best_improving_polynomial {
             new_polynomials.push(imp_polynomial);
         } else {
@@ -118,8 +114,7 @@ pub(crate) fn polyup(
     n: usize,
     k: usize,
     min_count: usize,
-) -> (Vec<Polynomial>, usize) {
-    let mut evaluated_dises = block_size;
+) -> Vec<Polynomial> {
     let zs = basic_zs(data, block_size);
 
     let top_bits = top_n_bits(&zs, n);
@@ -141,9 +136,8 @@ pub(crate) fn polyup(
             data,
             min_count,
             &mut final_polynomials,
-            &mut evaluated_dises,
         );
     }
 
-    (final_polynomials, evaluated_dises)
+    final_polynomials
 }
