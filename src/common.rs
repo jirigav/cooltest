@@ -57,6 +57,10 @@ pub(crate) enum Subcommands {
         /// Option whether the input data should be halved into training and testing data.
         #[arg(long)]
         halving: bool,
+
+        /// Option whether the input data should be divided into training, validation and testing data.
+        #[arg(long, short)]
+        validation_and_testing_split: bool,
     },
     /// Tool similar to fastup, but with distinguishers constructed as boolean polynomials.
     Polyup {
