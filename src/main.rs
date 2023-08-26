@@ -123,13 +123,13 @@ fn run_polyup(
     block_size: usize,
     k: usize,
     n: usize,
-    min_count: usize,
+    min_difference: usize,
     halving: bool,
 ) {
     let (training_data, _validation_data_option, testing_data_option) = prepare_data(data_source, block_size, halving, false);
 
     let _start = Instant::now();
-    let mut final_patterns = polyup(&training_data, block_size, n, k, min_count);
+    let mut final_patterns = polyup(&training_data, block_size, n, k, min_difference);
     final_patterns.sort_by(|a, b| {
         f64::abs(b.z_score.unwrap())
             .partial_cmp(&f64::abs(a.z_score.unwrap()))
@@ -189,8 +189,8 @@ fn main() {
             block_size,
             k,
             n,
-            min_count,
+            min_difference,
             halving,
-        } => run_polyup(&data_source, block_size, k, n, min_count, halving),
+        } => run_polyup(&data_source, block_size, k, n, min_difference, halving),
     }
 }

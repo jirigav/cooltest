@@ -59,9 +59,7 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
 
 fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: usize) -> bool {
     let p_new = 2_f64.powf(-(new_length as f64));
-    let abs_old = f64::abs(old_z_score);
-    let abs_new = f64::abs(z_score(samples, count_new, p_new));
-    abs_old <= abs_new // || (abs_new/abs_old > 0.9 && rand::random())
+    old_z_score <= z_score(samples, count_new, p_new) // || (abs_new/abs_old > 0.9 && rand::random())
 }
 
 #[allow(dead_code)]

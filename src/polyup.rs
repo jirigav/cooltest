@@ -52,7 +52,7 @@ fn extend_polynomials(
     best_polynomials: Vec<Polynomial>,
     top_bits: &[(usize, f64)],
     data: &[Vec<u8>],
-    min_count: usize,
+    min_difference: usize,
     final_polynomials: &mut Vec<Polynomial>,
 ) -> Vec<Polynomial> {
     let mut new_polynomials: Vec<Polynomial> = Vec::new();
@@ -78,7 +78,7 @@ fn extend_polynomials(
                 || testpolynomial
                     .get_count()
                     .abs_diff((testpolynomial.probability * (data.len() as f64)) as usize)
-                    < min_count
+                    < min_difference
             {
                 continue;
             }
@@ -113,7 +113,7 @@ pub(crate) fn polyup(
     block_size: usize,
     n: usize,
     k: usize,
-    min_count: usize,
+    min_difference: usize,
 ) -> Vec<Polynomial> {
     let zs = basic_zs(data, block_size);
 
@@ -134,7 +134,7 @@ pub(crate) fn polyup(
             best_polynomials,
             &top_bits,
             data,
-            min_count,
+            min_difference,
             &mut final_polynomials,
         );
     }

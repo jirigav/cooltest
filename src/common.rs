@@ -79,9 +79,9 @@ pub(crate) enum Subcommands {
         #[arg(short, long, default_value_t = 64)]
         n: usize,
 
-        /// Minimal count of a pattern in data, to be considered.
+        /// Minimal difference between expected and actual count of a given pattern.
         #[arg(short, long, default_value_t = 100)]
-        min_count: usize,
+        min_difference: usize,
 
         /// Option whether the input data should be halved into training and testing data.
         #[arg(long)]
