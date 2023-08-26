@@ -42,9 +42,9 @@ pub(crate) enum Subcommands {
         #[arg(short, long, default_value_t = 10)]
         k: usize,
 
-        /// Minimal count of a pattern in data, to be considered.
+        /// Minimal difference between expected and actual count of a given pattern in data.
         #[arg(short, long, default_value_t = 100)]
-        min_count: usize,
+        min_difference: usize,
 
         /// Number of patterns combined into a multipattern.
         #[arg(short, long, default_value_t = 2)]
@@ -62,7 +62,7 @@ pub(crate) enum Subcommands {
         #[arg(long, short)]
         validation_and_testing_split: bool,
     },
-    /// Tool similar to fastup, but with distinguishers constructed as boolean polynomials.
+    /// Tool similar to bottom up with base_pattern_size=1, but with distinguishers constructed as boolean polynomials and the ability to find also infrequent patterns.
     Polyup {
         /// Path of file with input data.
         data_source: String,
@@ -79,7 +79,7 @@ pub(crate) enum Subcommands {
         #[arg(short, long, default_value_t = 64)]
         n: usize,
 
-        /// Minimal difference between expected and actual count of a given pattern.
+        /// Minimal difference between expected and actual count of a given pattern in data.
         #[arg(short, long, default_value_t = 100)]
         min_difference: usize,
 

@@ -98,7 +98,7 @@ fn run_bottomup(
     data_source: &str,
     block_size: usize,
     k: usize,
-    min_count: usize,
+    min_difference: usize,
     patterns_combined: usize,
     base_pattern_size: usize,
     halving: bool,
@@ -107,7 +107,7 @@ fn run_bottomup(
     let (training_data, validation_data_option, testing_data_option) = prepare_data(data_source, block_size, halving, validation);
 
     let start = Instant::now();
-    let final_patterns = bottomup(&training_data, block_size, k, min_count, base_pattern_size);
+    let final_patterns = bottomup(&training_data, block_size, k, min_difference, base_pattern_size);
     results(
         final_patterns,
         start,
@@ -169,7 +169,7 @@ fn main() {
             data_source,
             block_size,
             k,
-            min_count,
+            min_difference,
             patterns_combined,
             base_pattern_size,
             halving,
@@ -178,7 +178,7 @@ fn main() {
             &data_source,
             block_size,
             k,
-            min_count,
+            min_difference,
             patterns_combined,
             base_pattern_size,
             halving,

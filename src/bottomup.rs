@@ -77,7 +77,7 @@ fn improving(
     pattern: &mut Pattern,
     hist: &[(usize, usize)],
     samples: usize,
-    min_count: usize,
+    min_difference: usize,
 ) -> Vec<Pattern> {
     let mut new_patterns = Vec::new();
     if pattern.z_score.is_none() {
@@ -96,7 +96,7 @@ fn improving(
         }
         //let sp = surpriseness_level(count, pattern.length + 1, samples);
         if is_improving(pattern.z_score.unwrap(), count, pattern.length + 1, samples)
-            && count >= min_count
+            && count - ((2.0_f64.powf(-(pattern.length as f64 + 1.0))*(samples as f64)) as usize) >= min_difference
         //         && sp > 3500.0
         {
             // println!("{sp}");
@@ -113,7 +113,7 @@ fn phase_two(
     k: usize,
     mut top_k: Vec<Pattern>,
     data: &[Vec<u8>],
-    min_count: usize,
+    min_difference: usize,
     block_size: usize,
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
@@ -148,7 +148,7 @@ fn phase_two(
         let mut new_top_k: Vec<Pattern> = Vec::with_capacity(top_k.len());
 
         for i in 0..hists.len() {
-            let mut imp = improving(&mut top_k[i], &hists[i], data.len(), min_count);
+            let mut imp = improving(&mut top_k[i], &hists[i], data.len(), min_difference);
 
             if imp.is_empty() {
                 final_patterns.push(top_k[i].clone());
@@ -174,14 +174,14 @@ pub(crate) fn bottomup(
     data: &[Vec<u8>],
     block_size: usize,
     k: usize,
-    min_count: usize,
+    min_difference: usize,
     base_degree: usize,
 ) -> Vec<Pattern> {
     let mut start = Instant::now();
     let top_k = phase_one(data, k, block_size, base_degree);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let r = phase_two(k, top_k, data, min_count, block_size);
+    let r = phase_two(k, top_k, data, min_difference, block_size);
     println!("phase two {:.2?}", start.elapsed());
     r
 }
