@@ -59,18 +59,7 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
 
 fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: usize) -> bool {
     let p_new = 2_f64.powf(-(new_length as f64));
-    old_z_score <= z_score(samples, count_new, p_new) // || (abs_new/abs_old > 0.9 && rand::random())
-}
-
-#[allow(dead_code)]
-fn surpriseness_level(count: usize, length: usize, samples: usize) -> f64 {
-    let p = 2_f64.powf(-(length as f64));
-    let expected = p * (samples as f64);
-    if (count as f64) >= expected.ceil() {
-        -f64::log2(p) * ((count as f64) - expected.ceil())
-    } else {
-        -f64::log10(p) * (expected.floor() - (count as f64))
-    }
+    old_z_score <= z_score(samples, count_new, p_new)
 }
 
 fn improving(
@@ -94,12 +83,10 @@ fn improving(
             count = counts.1;
             v = true;
         }
-        //let sp = surpriseness_level(count, pattern.length + 1, samples);
+        
         if is_improving(pattern.z_score.unwrap(), count, pattern.length + 1, samples)
             && count - ((2.0_f64.powf(-(pattern.length as f64 + 1.0))*(samples as f64)) as usize) >= min_difference
-        //         && sp > 3500.0
         {
-            // println!("{sp}");
             let mut new_pattern = pattern.clone();
             new_pattern.add_bit(i, v);
             new_pattern.increase_count(count);
