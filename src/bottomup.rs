@@ -83,9 +83,10 @@ fn improving(
             count = counts.1;
             v = true;
         }
-        
+
         if is_improving(pattern.z_score.unwrap(), count, pattern.length + 1, samples)
-            && count - ((2.0_f64.powf(-(pattern.length as f64 + 1.0))*(samples as f64)) as usize) >= min_difference
+            && count - ((2.0_f64.powf(-(pattern.length as f64 + 1.0)) * (samples as f64)) as usize)
+                >= min_difference
         {
             let mut new_pattern = pattern.clone();
             new_pattern.add_bit(i, v);

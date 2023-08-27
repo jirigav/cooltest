@@ -5,7 +5,9 @@ mod polyup;
 
 use crate::bottomup::bottomup;
 use crate::common::{load_data, shuffle_data, Args, Subcommands};
-use crate::distinguishers::{best_multi_pattern, evaluate_distinguisher, Distinguisher, Pattern, MultiPattern};
+use crate::distinguishers::{
+    best_multi_pattern, evaluate_distinguisher, Distinguisher, MultiPattern, Pattern,
+};
 use crate::polyup::polyup;
 use clap::Parser;
 use pyo3::prelude::*;
@@ -40,11 +42,10 @@ fn prepare_data(
 
     if validation {
         let (tr_data, testing_data) = training_data.split_at(training_data.len() / 3);
-        let (val_data, test_data) = testing_data.split_at(testing_data.len()/2);
+        let (val_data, test_data) = testing_data.split_at(testing_data.len() / 2);
         testing_data_option = Some(test_data.to_vec());
         validation_data_option = Some(val_data.to_vec());
         training_data = tr_data.to_vec();
-
     } else if halving {
         let (tr_data, testing_data) = training_data.split_at(training_data.len() / 2);
         testing_data_option = Some(testing_data.to_vec());
@@ -69,7 +70,7 @@ fn results(
     let mut b_multi_pattern: MultiPattern;
     if let Some(validation_data) = validation_data_option {
         b_multi_pattern = best_multi_pattern(&validation_data, &final_patterns, patterns_combined);
-    } else{
+    } else {
         b_multi_pattern = best_multi_pattern(training_data, &final_patterns, patterns_combined);
     }
 
@@ -104,10 +105,17 @@ fn run_bottomup(
     halving: bool,
     validation: bool,
 ) {
-    let (training_data, validation_data_option, testing_data_option) = prepare_data(data_source, block_size, halving, validation);
+    let (training_data, validation_data_option, testing_data_option) =
+        prepare_data(data_source, block_size, halving, validation);
 
     let start = Instant::now();
-    let final_patterns = bottomup(&training_data, block_size, k, min_difference, base_pattern_size);
+    let final_patterns = bottomup(
+        &training_data,
+        block_size,
+        k,
+        min_difference,
+        base_pattern_size,
+    );
     results(
         final_patterns,
         start,
@@ -126,7 +134,8 @@ fn run_polyup(
     min_difference: usize,
     halving: bool,
 ) {
-    let (training_data, _validation_data_option, testing_data_option) = prepare_data(data_source, block_size, halving, false);
+    let (training_data, _validation_data_option, testing_data_option) =
+        prepare_data(data_source, block_size, halving, false);
 
     let _start = Instant::now();
     let mut final_patterns = polyup(&training_data, block_size, n, k, min_difference);
@@ -173,7 +182,7 @@ fn main() {
             patterns_combined,
             base_pattern_size,
             halving,
-            validation_and_testing_split
+            validation_and_testing_split,
         } => run_bottomup(
             &data_source,
             block_size,
