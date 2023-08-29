@@ -145,11 +145,16 @@ fn phase_two(
 
             imp.sort_unstable_by_key(|b| std::cmp::Reverse(b.get_count()));
 
+            let mut pattern_added = false;
             for p in &imp {
                 if !new_top_k.contains(p) {
                     new_top_k.push(p.clone());
+                    pattern_added = true;
                     break;
                 }
+            }
+            if !pattern_added{
+                final_patterns.push(top_k[i].clone());
             }
         }
         top_k = new_top_k;
