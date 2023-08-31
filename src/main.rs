@@ -146,7 +146,7 @@ fn run_polyup(
     });
 
     //println!("{final_patterns:?}");
-    println!("{:?}", final_patterns[0].monomials);
+    println!("{:?}", final_patterns[0]);
     println!("{}", final_patterns[0].z_score.unwrap());
 
     if let Some(testing_data) = testing_data_option {
