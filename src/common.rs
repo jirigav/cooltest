@@ -62,7 +62,7 @@ pub(crate) enum Subcommands {
         #[arg(long, short)]
         validation_and_testing_split: bool,
 
-        /// Option whether the input data should be halved into training and testing data.
+        /// Option whether histogram should be used as an alternative evaluation method.
         #[arg(long)]
         hist: bool,
     },
