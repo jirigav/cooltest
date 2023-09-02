@@ -63,6 +63,7 @@ fn results(
     testing_data_option: Option<&Vec<Vec<u8>>>,
     validation_data_option: Option<&Vec<Vec<u8>>>,
     patterns_combined: usize,
+    hist: bool,
 ) {
     final_patterns.sort_by(|a, b| {
         f64::abs(b.z_score.unwrap())
@@ -95,6 +96,9 @@ fn results(
             )
         );
     }
+    if hist {
+        hist_result(final_patterns, training_data, testing_data_option);
+    }
 }
 
 fn get_hist(bits: &Vec<usize>, data: &[Vec<u8>]) -> Vec<usize> {
@@ -104,18 +108,12 @@ fn get_hist(bits: &Vec<usize>, data: &[Vec<u8>]) -> Vec<usize> {
     }
     hist
 }
-fn results2(
-    mut final_patterns: Vec<Pattern>,
-    start: Instant,
+fn hist_result(
+    final_patterns: Vec<Pattern>,
     training_data: &[Vec<u8>],
     testing_data_option: Option<&Vec<Vec<u8>>>,
 ) {
     println!("\n-- histograms --\n");
-    final_patterns.sort_by(|a, b| {
-        f64::abs(b.z_score.unwrap())
-            .partial_cmp(&f64::abs(a.z_score.unwrap()))
-            .unwrap()
-    });
     let mut bits = HashSet::new();
 
     for p in final_patterns.iter().take(1) {
@@ -126,8 +124,10 @@ fn results2(
     bits_vec.sort();
 
     println!("number of bits: {}", bits_vec.len());
+
     if bits_vec.len() > 16 {
-        panic!();
+        println!("Too many bits in pattern, can't produce hist result.");
+        return;
     }
 
     let hist = get_hist(&bits_vec, training_data);
@@ -150,7 +150,6 @@ fn results2(
             best_i = i;
         }
     }
-    println!("trained in {:.2?}", start.elapsed());
 
     println!("z-score: {}", max_z);
 
@@ -180,6 +179,7 @@ fn run_bottomup(
     base_pattern_size: usize,
     halving: bool,
     validation: bool,
+    hist: bool,
 ) {
     let (training_data, validation_data_option, testing_data_option) =
         prepare_data(data_source, block_size, halving, validation);
@@ -199,12 +199,7 @@ fn run_bottomup(
         testing_data_option.as_ref(),
         validation_data_option.as_ref(),
         patterns_combined,
-    );
-    results2(
-        final_patterns,
-        start,
-        &training_data,
-        testing_data_option.as_ref(),
+        hist,
     );
 }
 
@@ -265,6 +260,7 @@ fn main() {
             base_pattern_size,
             halving,
             validation_and_testing_split,
+            hist,
         } => run_bottomup(
             &data_source,
             block_size,
@@ -274,6 +270,7 @@ fn main() {
             base_pattern_size,
             halving,
             validation_and_testing_split,
+            hist,
         ),
         Subcommands::Polyup {
             data_source,
