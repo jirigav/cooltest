@@ -61,6 +61,10 @@ pub(crate) enum Subcommands {
         /// Option whether the input data should be divided into training, validation and testing data.
         #[arg(long, short)]
         validation_and_testing_split: bool,
+
+        /// Option whether histogram should be used as an alternative evaluation method.
+        #[arg(long)]
+        hist: bool,
     },
     /// Tool similar to bottom up with base_pattern_size=1, but with distinguishers constructed as boolean polynomials and the ability to find also infrequent patterns.
     Polyup {
