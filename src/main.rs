@@ -4,57 +4,18 @@ mod distinguishers;
 mod polyup;
 
 use crate::bottomup::bottomup;
-use crate::common::{bits_block_eval, load_data, shuffle_data, z_score, Args, Subcommands};
+use crate::common::{
+    bits_block_eval, p_value, shuffle_data, z_score, Args, Subcommands,
+};
 use crate::distinguishers::{
     best_multi_pattern, evaluate_distinguisher, Distinguisher, MultiPattern, Pattern,
 };
 use crate::polyup::polyup;
 use clap::Parser;
+use common::prepare_data;
 use itertools::Itertools;
-use pyo3::prelude::*;
 use std::collections::HashSet;
 use std::time::Instant;
-
-fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
-        let scipy = PyModule::import(py, "scipy").unwrap();
-        let result: f64 = scipy
-            .getattr("stats")
-            .unwrap()
-            .getattr("binom_test")
-            .unwrap()
-            .call1((positive, sample_size, probability, "two-sided"))
-            .unwrap()
-            .extract()
-            .unwrap();
-        result
-    })
-}
-
-fn prepare_data(
-    data_source: &str,
-    block_size: usize,
-    halving: bool,
-    validation: bool,
-) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>) {
-    let mut training_data = load_data(data_source, block_size);
-    let mut testing_data_option = None;
-    let mut validation_data_option = None;
-
-    if validation {
-        let (tr_data, testing_data) = training_data.split_at(training_data.len() / 3);
-        let (val_data, test_data) = testing_data.split_at(testing_data.len() / 2);
-        testing_data_option = Some(test_data.to_vec());
-        validation_data_option = Some(val_data.to_vec());
-        training_data = tr_data.to_vec();
-    } else if halving {
-        let (tr_data, testing_data) = training_data.split_at(training_data.len() / 2);
-        testing_data_option = Some(testing_data.to_vec());
-        training_data = tr_data.to_vec();
-    }
-    (training_data, validation_data_option, testing_data_option)
-}
 
 fn results(
     mut final_patterns: Vec<Pattern>,

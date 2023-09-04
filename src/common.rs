@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use pyo3::prelude::*;
 use rand::seq::SliceRandom;
 use std::fs::File;
 use std::{fs, io::Write};
@@ -109,13 +110,37 @@ pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
     result
 }
 
-pub(crate) fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
+fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
     let len_of_block_in_bytes = block_size / 8;
     fs::read(path)
         .unwrap()
         .chunks(len_of_block_in_bytes)
         .map(<[u8]>::to_vec)
         .collect()
+}
+
+pub(crate) fn prepare_data(
+    data_source: &str,
+    block_size: usize,
+    halving: bool,
+    validation: bool,
+) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>) {
+    let mut training_data = load_data(data_source, block_size);
+    let mut testing_data_option = None;
+    let mut validation_data_option = None;
+
+    if validation {
+        let (tr_data, testing_data) = training_data.split_at(training_data.len() / 3);
+        let (val_data, test_data) = testing_data.split_at(testing_data.len() / 2);
+        testing_data_option = Some(test_data.to_vec());
+        validation_data_option = Some(val_data.to_vec());
+        training_data = tr_data.to_vec();
+    } else if halving {
+        let (tr_data, testing_data) = training_data.split_at(training_data.len() / 2);
+        testing_data_option = Some(testing_data.to_vec());
+        training_data = tr_data.to_vec();
+    }
+    (training_data, validation_data_option, testing_data_option)
 }
 
 pub(crate) fn shuffle_data(data_in_path: &str, data_out_path: &str, block_size: usize) {
@@ -128,4 +153,21 @@ pub(crate) fn shuffle_data(data_in_path: &str, data_out_path: &str, block_size: 
     file_out
         .write_all(&data.iter().flatten().copied().collect::<Vec<u8>>())
         .unwrap();
+}
+
+pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let scipy = PyModule::import(py, "scipy").unwrap();
+        let result: f64 = scipy
+            .getattr("stats")
+            .unwrap()
+            .getattr("binom_test")
+            .unwrap()
+            .call1((positive, sample_size, probability, "two-sided"))
+            .unwrap()
+            .extract()
+            .unwrap();
+        result
+    })
 }
