@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use crate::common::{bit_value_in_block, bits_block_eval, z_score};
-use crate::distinguishers::{Distinguisher, Pattern};
+use crate::common::{bit_value_in_block, bits_block_eval};
+use crate::distinguishers::{Distinguisher, MultiPattern, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
 
-fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
+fn phase_one(data: &[Vec<u8>], n: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
     let m = (0..2_u8.pow(base_degree as u32))
         .map(|x| {
             (0..base_degree)
@@ -13,7 +13,7 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
                 .collect_vec()
         })
         .collect_vec();
-    let mut best_patterns = vec![(0, (Vec::new(), Vec::new())); k];
+    let mut sorted_patterns = Vec::new();
 
     for bits in (0..block_size).combinations(base_degree) {
         let hist = data
@@ -31,22 +31,21 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
                 },
             );
 
-        let max_count = hist.iter().max().unwrap();
+        let min_count = hist.iter().min().unwrap();
 
-        if max_count > &best_patterns[k - 1].0 {
-            best_patterns[k - 1] = (
-                *max_count,
-                (
-                    bits,
-                    m[hist.iter().position(|x| x == max_count).unwrap()].clone(),
-                ),
-            );
-            best_patterns.sort_unstable_by(|a, b| b.0.cmp(&a.0));
-        }
+        sorted_patterns.push((
+            *min_count,
+            (
+                bits,
+                m[hist.iter().position(|x| x == min_count).unwrap()].clone(),
+            ),
+        ));
     }
+    sorted_patterns.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
-    best_patterns
+    sorted_patterns
         .into_iter()
+        .take(n)
         .map(|(count, (bits, values))| Pattern {
             length: base_degree,
             bits,
@@ -57,124 +56,75 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
         .collect()
 }
 
-fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: usize) -> bool {
-    let p_new = 2_f64.powf(-(new_length as f64));
-    old_z_score <= z_score(samples, count_new, p_new)
-}
-
-fn improving(
-    pattern: &mut Pattern,
-    hist: &[(usize, usize)],
-    samples: usize,
-    min_difference: usize,
-) -> Vec<Pattern> {
-    let mut new_patterns = Vec::new();
-    if pattern.z_score.is_none() {
-        pattern.z_score(samples);
-    }
-    for (i, counts) in hist.iter().enumerate() {
-        if pattern.bits.contains(&i) {
-            continue;
-        }
-
-        let mut count = counts.0;
-        let mut v = false;
-        if counts.0 < counts.1 {
-            count = counts.1;
-            v = true;
-        }
-
-        if is_improving(pattern.z_score.unwrap(), count, pattern.length + 1, samples)
-            && count - ((2.0_f64.powf(-(pattern.length as f64 + 1.0)) * (samples as f64)) as usize)
-                >= min_difference
-        {
-            let mut new_pattern = pattern.clone();
-            new_pattern.add_bit(i, v);
-            new_pattern.increase_count(count);
-            new_patterns.push(new_pattern);
-        }
-    }
-    new_patterns
-}
-
 fn phase_two(
     k: usize,
-    mut top_k: Vec<Pattern>,
+    sorted_patterns: Vec<Pattern>,
     data: &[Vec<u8>],
     min_difference: usize,
-    block_size: usize,
-) -> Vec<Pattern> {
-    let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
+) -> MultiPattern {
+    let mut top_mp = sorted_patterns
+        .iter()
+        .take(k)
+        .map(|p| {
+            let mut mp = MultiPattern::new(vec![p.clone()]);
+            mp.increase_count(p.count.unwrap());
+            mp.z_score(data.len());
+            mp
+        
+        })
+        .collect_vec();
+    let mut best_mp: Option<MultiPattern> = None;
+    while !top_mp.is_empty() {
+        let mut new_top_mp: Vec<MultiPattern> = Vec::new();
+        for mp in &top_mp{
+            let mut best_improving: Option<MultiPattern> = None;
 
-    let mut pattern_len = 2;
+            for p in &sorted_patterns{
+                if mp.patterns.contains(&p){
+                    continue;
+                }
+                let mut ps = mp.patterns.clone();
+                ps.push(p.clone());
+                let mut new_mp = MultiPattern::new(ps);
+                new_mp.increase_count(data.par_iter().map(|block| new_mp.evaluate(block)).filter(|x| *x).count());
 
-    while !top_k.is_empty() && pattern_len < block_size {
-        pattern_len += 1;
+                if new_mp.get_count().abs_diff((new_mp.probability * (data.len() as f64)) as usize) < min_difference{
+                    continue;
+                }
 
-        let mut hists: Vec<Vec<(usize, usize)>> = Vec::with_capacity(top_k.len());
-        for _ in 0..top_k.len() {
-            hists.push(vec![(0, 0); block_size]);
-        }
+                let z = new_mp.z_score(data.len());
+                if !new_top_mp.contains(&new_mp) && z > mp.z_score.unwrap() && (best_improving.is_none() || best_improving.as_ref().unwrap().z_score.unwrap() > z){
+                    best_improving = Some(new_mp.clone());
+                }
 
-        for block in data {
-            for (i, pattern) in top_k.iter().enumerate() {
-                if pattern.evaluate(block) {
-                    for b in 0..block_size {
-                        if pattern.bits.contains(&b) {
-                            continue;
-                        }
-                        if bit_value_in_block(b, block) {
-                            hists[i][b].1 += 1;
-                        } else {
-                            hists[i][b].0 += 1;
-                        }
-                    }
+                if best_mp.is_none() || best_mp.as_ref().unwrap().z_score.unwrap() > z {
+                    best_mp = Some(new_mp);
                 }
             }
+            if let Some(imp) = best_improving{
+                new_top_mp.push(imp);
+            }
+            
         }
+        top_mp = new_top_mp;
 
-        let mut new_top_k: Vec<Pattern> = Vec::with_capacity(top_k.len());
-
-        for i in 0..hists.len() {
-            let mut imp = improving(&mut top_k[i], &hists[i], data.len(), min_difference);
-
-            if imp.is_empty() {
-                final_patterns.push(top_k[i].clone());
-                continue;
-            }
-
-            imp.sort_unstable_by_key(|b| std::cmp::Reverse(b.get_count()));
-
-            let mut pattern_added = false;
-            for p in &imp {
-                if !new_top_k.contains(p) {
-                    new_top_k.push(p.clone());
-                    pattern_added = true;
-                    break;
-                }
-            }
-            if !pattern_added {
-                final_patterns.push(top_k[i].clone());
-            }
-        }
-        top_k = new_top_k;
     }
-
-    final_patterns
+    best_mp.unwrap()
 }
 
 pub(crate) fn bottomup(
     data: &[Vec<u8>],
     block_size: usize,
     k: usize,
+    n: usize,
     min_difference: usize,
     base_degree: usize,
-) -> Vec<Pattern> {
+) -> MultiPattern {
     let mut start = Instant::now();
-    let top_k = phase_one(data, k, block_size, base_degree);
+    let sorted_patterns = phase_one(data, n, block_size, base_degree);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let r = phase_two(k, top_k, data, min_difference, block_size);
+    let r = phase_two(k, sorted_patterns, data, min_difference);
     println!("phase two {:.2?}", start.elapsed());
     r
 }

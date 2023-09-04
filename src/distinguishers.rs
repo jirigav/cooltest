@@ -18,7 +18,7 @@ pub(crate) trait Distinguisher {
     fn get_z_score(&self) -> Option<f64>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Pattern {
     pub(crate) length: usize,
     pub(crate) bits: Vec<usize>,
@@ -96,18 +96,6 @@ impl Distinguisher for Pattern {
     }
 }
 
-impl Clone for Pattern {
-    fn clone(&self) -> Self {
-        Pattern {
-            length: self.length,
-            bits: self.bits.clone(),
-            values: self.values.clone(),
-            count: self.count,
-            z_score: self.z_score,
-        }
-    }
-}
-
 impl PartialEq for Pattern {
     fn eq(&self, other: &Self) -> bool {
         self.bits == other.bits && self.values == other.values
@@ -120,9 +108,9 @@ impl fmt::Display for Pattern {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct MultiPattern {
-    patterns: Vec<Pattern>,
+    pub(crate) patterns: Vec<Pattern>,
     pub(crate) probability: f64,
     pub(crate) z_score: Option<f64>,
     count: Option<usize>,
@@ -193,14 +181,9 @@ impl Distinguisher for MultiPattern {
     }
 }
 
-impl Clone for MultiPattern {
-    fn clone(&self) -> Self {
-        Self {
-            patterns: self.patterns.clone(),
-            probability: self.probability,
-            z_score: None,
-            count: None,
-        }
+impl PartialEq for MultiPattern {
+    fn eq(&self, other: &Self) -> bool {
+        self.patterns == other.patterns
     }
 }
 
@@ -253,7 +236,7 @@ pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
     distinguisher.z_score(data.len())
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Polynomial {
     pub(crate) monomials: Vec<Vec<usize>>,
     used_variables: HashSet<usize>,
@@ -356,18 +339,6 @@ impl Distinguisher for Polynomial {
 impl PartialEq for Polynomial {
     fn eq(&self, other: &Polynomial) -> bool {
         self.monomials == other.monomials
-    }
-}
-
-impl Clone for Polynomial {
-    fn clone(&self) -> Self {
-        Polynomial {
-            monomials: self.monomials.clone(),
-            used_variables: self.used_variables.clone(),
-            probability: self.probability,
-            z_score: None,
-            count: None,
-        }
     }
 }
 

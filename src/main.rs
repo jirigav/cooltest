@@ -181,26 +181,31 @@ fn run_bottomup(
     validation: bool,
     hist: bool,
 ) {
-    let (training_data, validation_data_option, testing_data_option) =
+    let (training_data, _validation_data_option, testing_data_option) =
         prepare_data(data_source, block_size, halving, validation);
 
-    let start = Instant::now();
-    let final_patterns = bottomup(
+    let mut final_patterns = bottomup(
         &training_data,
         block_size,
         k,
+        patterns_combined,
         min_difference,
         base_pattern_size,
     );
-    results(
-        final_patterns.clone(),
-        start,
-        &training_data,
-        testing_data_option.as_ref(),
-        validation_data_option.as_ref(),
-        patterns_combined,
-        hist,
-    );
+    if let Some(testing_data) = testing_data_option {
+        println!(
+            "z-score: {}",
+            evaluate_distinguisher(&mut final_patterns, &testing_data)
+        );
+        println!(
+            "p-value: {:.0e}",
+            p_value(
+                final_patterns.get_count(),
+                testing_data.len(),
+                final_patterns.probability
+            )
+        );
+    }
 }
 
 fn run_polyup(
