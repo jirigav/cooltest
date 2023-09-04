@@ -89,6 +89,7 @@ fn improving(
                 >= min_difference
         {
             let mut new_pattern = pattern.clone();
+            new_pattern.forget_count();
             new_pattern.add_bit(i, v);
             new_pattern.increase_count(count);
             new_patterns.push(new_pattern);

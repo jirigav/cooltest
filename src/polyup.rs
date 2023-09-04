@@ -68,6 +68,7 @@ fn extend_polynomials(
             .collect();
 
         testpolynomials.par_iter_mut().for_each(|poly| {
+            poly.forget_count();
             poly.increase_count(data.par_iter().filter(|block| poly.evaluate(block)).count());
             poly.z_score(data.len());
         });

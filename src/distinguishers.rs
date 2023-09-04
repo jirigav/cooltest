@@ -181,6 +181,7 @@ impl Distinguisher for MultiPattern {
     }
 }
 
+
 pub(crate) fn best_multi_pattern(data: &[Vec<u8>], patterns: &[Pattern], n: usize) -> MultiPattern {
     let mut best_mp: Option<MultiPattern> = None;
     let mut max_z = 0.0;
