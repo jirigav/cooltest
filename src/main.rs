@@ -205,6 +205,7 @@ fn run_polyup(
 
 fn main() {
     let args = Args::parse();
+    println!("\n{args:?}\n");
 
     match args.tool {
         Subcommands::ShuffleData {

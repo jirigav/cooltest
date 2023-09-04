@@ -8,14 +8,14 @@ pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(version)]
 pub(crate) struct Args {
     #[clap(subcommand)]
     pub(crate) tool: Subcommands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 #[command(version)]
 pub(crate) enum Subcommands {
     /// Simple tool to shuffle blocks of given length of the input file and save shuffled data into output file.
