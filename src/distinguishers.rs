@@ -144,6 +144,25 @@ impl MultiPattern {
             count: None,
         }
     }
+
+    pub(crate) fn add_pattern(&mut self, pattern: Pattern) {
+        let mut probability = self.probability;
+
+        probability += (0..=self.patterns.len()).into_par_iter().map(|i| {
+            let sgn = (-1.0_f64).powf(i as f64);
+            let mut prob: f64 = 0.0;
+            for ps in self.patterns.iter().combinations(i) {
+                let mut ps_cloned = ps.clone();
+                ps_cloned.push(&pattern);
+                prob += sgn * union_probability(&ps_cloned);
+            }
+            prob
+        }).sum::<f64>();
+        self.patterns.push(pattern);
+        self.probability = probability;
+        self.count = None;
+        self.z_score = None;
+    }
 }
 
 impl Distinguisher for MultiPattern {

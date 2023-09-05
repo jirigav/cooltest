@@ -74,7 +74,9 @@ fn phase_two(
         })
         .collect_vec();
     let mut best_mp: Option<MultiPattern> = None;
-    while !top_mp.is_empty() {
+    let mut combined = 1;
+    while !top_mp.is_empty() && combined < 30 {
+        combined += 1;
         let mut new_top_mp: Vec<MultiPattern> = Vec::new();
         for mp in &top_mp{
             let mut best_improving: Option<MultiPattern> = None;
@@ -83,9 +85,9 @@ fn phase_two(
                 if mp.patterns.contains(&p){
                     continue;
                 }
-                let mut ps = mp.patterns.clone();
-                ps.push(p.clone());
-                let mut new_mp = MultiPattern::new(ps);
+                let mut new_mp = mp.clone();
+                new_mp.add_pattern(p.clone());
+                
                 new_mp.increase_count(data.par_iter().map(|block| new_mp.evaluate(block)).filter(|x| *x).count());
 
                 if new_mp.get_count().abs_diff((new_mp.probability * (data.len() as f64)) as usize) < min_difference{
@@ -93,7 +95,7 @@ fn phase_two(
                 }
 
                 let z = new_mp.z_score(data.len());
-                if !new_top_mp.contains(&new_mp) && z > mp.z_score.unwrap() && (best_improving.is_none() || best_improving.as_ref().unwrap().z_score.unwrap() > z){
+                if !new_top_mp.contains(&new_mp) && z < mp.z_score.unwrap() && (best_improving.is_none() || best_improving.as_ref().unwrap().z_score.unwrap() > z){
                     best_improving = Some(new_mp.clone());
                 }
 
@@ -126,5 +128,6 @@ pub(crate) fn bottomup(
     start = Instant::now();
     let r = phase_two(k, sorted_patterns, data, min_difference);
     println!("phase two {:.2?}", start.elapsed());
+    println!("{r:?}");
     r
 }
