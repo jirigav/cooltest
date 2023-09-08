@@ -1,8 +1,52 @@
-use crate::common::z_score;
+use crate::common::{bits_block_eval, z_score};
 use core::fmt;
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::{collections::HashSet, fmt::Debug};
+
+#[derive(Debug, Clone)]
+pub(crate) struct Histogram {
+    pub(crate) bits: Vec<usize>,
+    pub(crate) _bins: Vec<usize>,
+    pub(crate) sorted_indices: Vec<usize>,
+    pub(crate) best_division: usize,
+    pub(crate) z_score: f64,
+}
+
+impl Histogram {
+    pub(crate) fn get_hist(bits: &Vec<usize>, data: &[Vec<u8>]) -> Histogram {
+        let mut hist = vec![0; 2_usize.pow(bits.len() as u32)];
+        for block in data {
+            hist[bits_block_eval(bits, block)] += 1;
+        }
+
+        let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
+        indices.sort_by(|a, b| hist[*b].cmp(&hist[*a]));
+
+        let mut max_z = 0.0;
+        let mut best_i = 0;
+        let prob = 2.0_f64.powf(-(bits.len() as f64));
+
+        for i in 1..2_usize.pow(bits.len() as u32) {
+            let mut count = 0;
+            for k in 0..i {
+                count += hist[indices[k]];
+            }
+            let z = z_score(data.len(), count, prob * (i as f64));
+            if z > max_z {
+                max_z = z;
+                best_i = i;
+            }
+        }
+        Histogram {
+            bits: bits.to_vec(),
+            _bins: hist,
+            sorted_indices: indices,
+            best_division: best_i,
+            z_score: max_z,
+        }
+    }
+}
 
 pub(crate) trait Distinguisher {
     fn evaluate(&self, block: &[u8]) -> bool;
@@ -297,5 +341,4 @@ mod tests {
             }
         }
     }
-
 }

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::common::{bit_value_in_block, bits_block_eval, z_score};
+use crate::common::{bit_value_in_block, bits_block_eval, z_score, Args};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -164,18 +164,12 @@ fn phase_two(
     final_patterns
 }
 
-pub(crate) fn bottomup(
-    data: &[Vec<u8>],
-    block_size: usize,
-    k: usize,
-    min_difference: usize,
-    base_degree: usize,
-) -> Vec<Pattern> {
+pub(crate) fn bottomup(data: &[Vec<u8>], args: &Args) -> Vec<Pattern> {
     let mut start = Instant::now();
-    let top_k = phase_one(data, k, block_size, base_degree);
+    let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let r = phase_two(k, top_k, data, min_difference, block_size);
+    let r = phase_two(args.k, top_k, data, args.min_difference, args.block_size);
     println!("phase two {:.2?}", start.elapsed());
     r
 }
