@@ -9,7 +9,6 @@ pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
 #[derive(Parser, Debug)]
 #[command(version)]
 pub(crate) struct Args {
-
     /// Path of file with input data.
     pub(crate) data_source: String,
 
@@ -20,7 +19,6 @@ pub(crate) struct Args {
     /// Number of explored pattern branches.
     #[arg(short, long, default_value_t = 10)]
     pub(crate) k: usize,
-
 
     /// Length of patterns evaluated in the first phase.
     #[arg(short, long, default_value_t = 2)]
@@ -34,6 +32,8 @@ pub(crate) struct Args {
     #[arg(long, short)]
     pub(crate) validation_and_testing_split: bool,
 
+    #[arg(long, short, default_value_t = 10)]
+    pub(crate) max_bits: usize,
 }
 
 pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
