@@ -20,9 +20,9 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 10)]
     pub(crate) k: usize,
 
-    /// Minimal difference between expected and actual count of a given pattern in data.
-    #[arg(short, long, default_value_t = 100)]
-    pub(crate) min_difference: usize,
+    /// Maximal p-value of child-pattern to be accepted as improving.
+    #[arg(short, long, default_value_t = 0.005)]
+    pub(crate) improving_p_value: f64,
 
     /// Number of patterns combined into a multipattern.
     #[arg(short, long, default_value_t = 2)]

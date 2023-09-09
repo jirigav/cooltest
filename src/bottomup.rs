@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::common::{bit_value_in_block, bits_block_eval, z_score, Args};
+use crate::common::{bit_value_in_block, bits_block_eval, z_score, Args, p_value};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -66,7 +66,7 @@ fn improving(
     pattern: &mut Pattern,
     hist: &[(usize, usize)],
     samples: usize,
-    min_difference: usize,
+    imp_p_value: f64,
 ) -> Vec<Pattern> {
     let mut new_patterns = Vec::new();
     if pattern.z_score.is_none() {
@@ -85,8 +85,7 @@ fn improving(
         }
 
         if is_improving(pattern.z_score.unwrap(), count, pattern.length + 1, samples)
-            && count - ((2.0_f64.powf(-(pattern.length as f64 + 1.0)) * (samples as f64)) as usize)
-                >= min_difference
+            && p_value(count, pattern.get_count(), 0.5) <= imp_p_value
         {
             let mut new_pattern = pattern.clone();
             new_pattern.forget_count();
@@ -102,15 +101,18 @@ fn phase_two(
     k: usize,
     mut top_k: Vec<Pattern>,
     data: &[Vec<u8>],
-    min_difference: usize,
+    imp_p_value: f64,
     block_size: usize,
+    base_degree: usize
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
 
-    let mut pattern_len = 2;
+    let mut pattern_len = base_degree;
+
 
     while !top_k.is_empty() && pattern_len < block_size {
         pattern_len += 1;
+
 
         let mut hists: Vec<Vec<(usize, usize)>> = Vec::with_capacity(top_k.len());
         for _ in 0..top_k.len() {
@@ -137,7 +139,7 @@ fn phase_two(
         let mut new_top_k: Vec<Pattern> = Vec::with_capacity(top_k.len());
 
         for i in 0..hists.len() {
-            let mut imp = improving(&mut top_k[i], &hists[i], data.len(), min_difference);
+            let mut imp = improving(&mut top_k[i], &hists[i], data.len(), imp_p_value);
 
             if imp.is_empty() {
                 final_patterns.push(top_k[i].clone());
@@ -169,7 +171,7 @@ pub(crate) fn bottomup(data: &[Vec<u8>], args: &Args) -> Vec<Pattern> {
     let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let r = phase_two(args.k, top_k, data, args.min_difference, args.block_size);
+    let r = phase_two(args.k, top_k, data, args.improving_p_value, args.block_size, args.base_pattern_size);
     println!("phase two {:.2?}", start.elapsed());
     r
 }
