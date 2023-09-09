@@ -47,6 +47,18 @@ impl Histogram {
             z_score: max_z,
         }
     }
+
+    pub(crate) fn evaluate(&self, data: &[Vec<u8>]) -> usize {
+        let mut hist2 = vec![0; 2_usize.pow(self.bits.len() as u32)];
+        for block in data {
+            hist2[bits_block_eval(&self.bits, block)] += 1;
+        }
+        let mut count = 0;
+        for k in 0..self.best_division {
+            count += hist2[self.sorted_indices[k]];
+        }
+        count
+    }
 }
 
 fn phase_one(data: &[Vec<u8>], block_size: usize, deg: usize, k: usize) -> Vec<Histogram> {

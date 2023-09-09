@@ -5,8 +5,6 @@ use crate::bottomup::bottomup;
 use crate::common::{p_value, z_score, Args};
 use clap::Parser;
 use common::prepare_data;
-
-use bottomup::Histogram;
 use std::time::Instant;
 
 fn run_bottomup(
@@ -25,12 +23,8 @@ fn run_bottomup(
     let hist = bottomup(&training_data, block_size, k, base_pattern_size, max_bits);
     println!("training finished in {:?}", start.elapsed());
     let testing_data = testing_data_option.unwrap();
-    let test_hist = Histogram::get_hist(&hist.bits, &testing_data);
 
-    let mut count = 0;
-    for k in 0..hist.best_division {
-        count += test_hist._bins[hist.sorted_indices[k]];
-    }
+    let count = hist.evaluate(&testing_data);
     let prob = 2.0_f64.powf(-(hist.bits.len() as f64));
     let z = z_score(
         testing_data.len(),
