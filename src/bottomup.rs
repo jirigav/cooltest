@@ -90,7 +90,6 @@ fn improving(
             let mut new_pattern = pattern.clone();
             new_pattern.forget_count();
             new_pattern.add_bit(i, v);
-            println!("{}   {} - {:?}", imp_p_value, p_value(count, pattern.get_count(), 0.5), new_pattern.bits);
             new_pattern.increase_count(count);
             new_patterns.push(new_pattern);
         }
@@ -102,19 +101,16 @@ fn phase_two(
     k: usize,
     mut top_k: Vec<Pattern>,
     data: &[Vec<u8>],
-    mut imp_p_value: f64,
+    imp_p_value: f64,
     block_size: usize,
     base_degree: usize
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
 
     let mut pattern_len = base_degree;
-    //imp_p_value *= 0.5_f64.powf(base_degree as f64);
 
     while !top_k.is_empty() && pattern_len < block_size {
         pattern_len += 1;
-        imp_p_value *= 0.6;
-
 
         let mut hists: Vec<Vec<(usize, usize)>> = Vec::with_capacity(top_k.len());
         for _ in 0..top_k.len() {
@@ -173,7 +169,7 @@ pub(crate) fn bottomup(data: &[Vec<u8>], args: &Args) -> Vec<Pattern> {
     let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let r = phase_two(args.k, top_k, data, args.improving_p_value, args.block_size, args.base_pattern_size);
+    let r = phase_two_alt(args.k, top_k, data, args.improving_p_value, args.block_size, args.base_pattern_size);
     println!("phase two {:.2?}", start.elapsed());
     r
 }
