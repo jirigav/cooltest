@@ -153,7 +153,7 @@ fn phase_two(
                     break;
                 }
             }
-            if !pattern_added{
+            if !pattern_added {
                 final_patterns.push(top_k[i].clone());
             }
         }

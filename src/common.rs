@@ -75,8 +75,8 @@ pub(crate) enum Subcommands {
         #[arg(short, long, default_value_t = 10)]
         k: usize,
 
-        /// Number of bits considered for the patterns.
-        #[arg(short, long, default_value_t = 64)]
+        ///
+        #[arg(short, long, default_value_t = 2)]
         n: usize,
 
         /// Minimal difference between expected and actual count of a given pattern in data.

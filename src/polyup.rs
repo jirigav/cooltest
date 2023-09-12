@@ -1,37 +1,9 @@
 use std::time::Instant;
 
-use crate::common::{bit_value_in_block, z_score, bits_block_eval};
+use crate::common::{bit_value_in_block, bits_block_eval};
 use crate::distinguishers::{Distinguisher, Polynomial};
 use itertools::Itertools;
 use rayon::prelude::*;
-
-fn basic_zs(data: &[Vec<u8>], block_size: usize) -> Vec<f64> {
-    let mut counts = vec![0; block_size];
-
-    for block in data {
-        for (i, count) in counts.iter_mut().enumerate() {
-            if bit_value_in_block(i, block) {
-                *count += 1;
-            }
-        }
-    }
-    counts
-        .iter()
-        .map(|c| z_score(data.len(), *c, 0.5))
-        .collect()
-}
-
-fn top_n_bits(zs: &[f64], n: usize) -> Vec<(usize, f64)> {
-    let mut top_n = vec![(0, 0.0); n];
-
-    for (i, z) in zs.iter().enumerate() {
-        if f64::abs(*z) > f64::abs(top_n[0].1) {
-            top_n[0] = (i, *z);
-            top_n.sort_by(|a, b| f64::abs(a.1).partial_cmp(&f64::abs(b.1)).unwrap());
-        }
-    }
-    top_n
-}
 
 fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) -> Vec<Polynomial> {
     let expected = (2.0_f64.powf(-(base_degree as f64)) * data.len() as f64) as usize;
@@ -71,7 +43,8 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
                     m[hist.iter().position(|x| x == max_count).unwrap()].clone(),
                 ),
             );
-            best_patterns.sort_unstable_by(|a, b| b.0.abs_diff(expected).cmp(&a.0.abs_diff(expected)));
+            best_patterns
+                .sort_unstable_by(|a, b| b.0.abs_diff(expected).cmp(&a.0.abs_diff(expected)));
         }
     }
 
@@ -79,7 +52,7 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
         .into_iter()
         .map(|(count, (bits, values))| {
             let mut p = Polynomial::new();
-            for (b, v) in bits.iter().zip(values.iter()){
+            for (b, v) in bits.iter().zip(values.iter()) {
                 p.and(*b, !v).unwrap();
             }
             p.increase_count(count);
@@ -125,7 +98,8 @@ fn extend_polynomials(
     for p in best_polynomials {
         let mut best_improving_polynomial: Option<Polynomial> = None;
 
-        let mut testpolynomials: Vec<Polynomial> = (0..block_size).collect_vec()
+        let mut testpolynomials: Vec<Polynomial> = (0..block_size)
+            .collect_vec()
             .par_iter()
             .filter(|b| !p.contains(**b))
             .flat_map(|b| new_polys(*b, &p))
@@ -164,13 +138,6 @@ fn extend_polynomials(
     }
 
     new_polynomials
-}
-
-fn create_polynomial(i: usize, z: f64) -> Polynomial {
-    let mut poly = Polynomial::new();
-    poly.and(i, z < 0.0).unwrap();
-    poly.z_score = Some(z);
-    poly
 }
 
 pub(crate) fn polyup(
