@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::common::{bit_value_in_block, bits_block_eval};
@@ -80,17 +81,24 @@ fn phase_two(
         let mut new_top_mp: Vec<MultiPattern> = Vec::new();
         for mp in &top_mp{
             let mut best_improving: Option<MultiPattern> = None;
-
+            let bits: HashSet<usize> = mp.patterns
+                .iter()
+                .flat_map(|x| x.bits.iter().copied())
+                .collect();
             for p in &sorted_patterns{
                 if mp.patterns.contains(&p){
                     continue;
                 }
+                
+                if bits.intersection(&p.bits.iter().copied().collect()).next().is_some(){ // skip if any bits are shared
+                    continue;
+                }
                 let mut new_mp = mp.clone();
-                new_mp.add_pattern(p.clone());
+                new_mp.add_disjoint_pattern(p.clone());
                 
                 new_mp.increase_count(data.par_iter().map(|block| new_mp.evaluate(block)).filter(|x| *x).count());
 
-                if new_mp.get_count().abs_diff((new_mp.probability * (data.len() as f64)) as usize) < min_difference{
+                if new_mp.get_count().abs_diff((new_mp.probability * (data.len() as f64)) as usize) < combined * min_difference{
                     continue;
                 }
 
