@@ -53,7 +53,7 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
             values,
             count: Some(count),
             z_score: None,
-            validation_z_score: None
+            validation_z_score: None,
         })
         .collect()
 }
@@ -77,13 +77,16 @@ fn improving(
         validation = true;
         validation_data = data;
     }
-    if validation {
-        if pattern.validation_z_score.is_none() {
-            pattern.validation_z_score = Some(z_score(validation_data.len(), validation_data.iter()
-            .filter(|block| pattern.evaluate(block))
-            .count(), 2.0_f64.powf(-(pattern.length as f64))));
-        }
-    } 
+    if validation && pattern.validation_z_score.is_none() {
+        pattern.validation_z_score = Some(z_score(
+            validation_data.len(),
+            validation_data
+                .iter()
+                .filter(|block| pattern.evaluate(block))
+                .count(),
+            2.0_f64.powf(-(pattern.length as f64)),
+        ));
+    }
     if pattern.z_score.is_none() {
         pattern.z_score(samples);
     }
@@ -108,20 +111,25 @@ fn improving(
             new_pattern.forget_count();
             new_pattern.add_bit(i, v);
             new_pattern.increase_count(count);
-            
-            if validation{
-                let new_z = new_pattern.z_score(samples); 
-                let valid_z = z_score(validation_data.len(), validation_data.iter()
-                .filter(|block| new_pattern.evaluate(block))
-                .count(), 2.0_f64.powf(-(new_pattern.length as f64)));
 
-                if pattern.validation_z_score.unwrap() > valid_z || valid_z < 0.6*new_z {
+            if validation {
+                let new_z = new_pattern.z_score(samples);
+                let valid_z = z_score(
+                    validation_data.len(),
+                    validation_data
+                        .iter()
+                        .filter(|block| new_pattern.evaluate(block))
+                        .count(),
+                    2.0_f64.powf(-(new_pattern.length as f64)),
+                );
+
+                if pattern.validation_z_score.unwrap() > valid_z || valid_z < 0.6 * new_z {
                     continue;
                 }
-                
+
                 new_pattern.validation_z_score = Some(valid_z);
             }
-            
+
             new_patterns.push(new_pattern);
         }
     }
@@ -168,7 +176,13 @@ fn phase_two(
         let mut new_top_k: Vec<Pattern> = Vec::with_capacity(top_k.len());
 
         for i in 0..hists.len() {
-            let mut imp = improving(validation_data_option, &mut top_k[i], &hists[i], data.len(), min_difference);
+            let mut imp = improving(
+                validation_data_option,
+                &mut top_k[i],
+                &hists[i],
+                data.len(),
+                min_difference,
+            );
 
             if imp.is_empty() {
                 final_patterns.push(top_k[i].clone());
@@ -195,12 +209,23 @@ fn phase_two(
     final_patterns
 }
 
-pub(crate) fn bottomup(data: &[Vec<u8>], validation_data_option: Option<&Vec<Vec<u8>>>, args: &Args) -> Vec<Pattern> {
+pub(crate) fn bottomup(
+    data: &[Vec<u8>],
+    validation_data_option: Option<&Vec<Vec<u8>>>,
+    args: &Args,
+) -> Vec<Pattern> {
     let mut start = Instant::now();
     let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let r = phase_two(args.k, top_k, data, validation_data_option, args.min_difference, args.block_size);
+    let r = phase_two(
+        args.k,
+        top_k,
+        data,
+        validation_data_option,
+        args.min_difference,
+        args.block_size,
+    );
     println!("phase two {:.2?}", start.elapsed());
     r
 }

@@ -295,7 +295,7 @@ mod tests {
                     values: vec![true, false],
                     count: None,
                     z_score: None,
-                    validation_z_score: None
+                    validation_z_score: None,
                 },
                 Pattern {
                     length: 3,
