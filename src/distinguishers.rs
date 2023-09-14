@@ -69,6 +69,7 @@ pub(crate) struct Pattern {
     pub(crate) values: Vec<bool>,
     pub(crate) count: Option<usize>,
     pub(crate) z_score: Option<f64>,
+    pub(crate) validation_z_score: Option<f64>,
 }
 
 impl Pattern {
@@ -117,6 +118,8 @@ impl Distinguisher for Pattern {
 
     fn forget_count(&mut self) {
         self.count = None;
+        self.z_score = None;
+        self.validation_z_score = None;
     }
 
     fn increase_count(&mut self, n: usize) {
@@ -292,6 +295,7 @@ mod tests {
                     values: vec![true, false],
                     count: None,
                     z_score: None,
+                    validation_z_score: None,
                 },
                 Pattern {
                     length: 3,
@@ -299,6 +303,7 @@ mod tests {
                     values: vec![true, true, true],
                     count: None,
                     z_score: None,
+                    validation_z_score: None,
                 },
             ]
             .to_vec(),
@@ -328,6 +333,7 @@ mod tests {
                         values,
                         count: None,
                         z_score: None,
+                        validation_z_score: None,
                     };
                     patterns.push(p);
                 }

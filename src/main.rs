@@ -18,7 +18,6 @@ fn results(
     start: Instant,
     training_data: &[Vec<u8>],
     testing_data_option: Option<&Vec<Vec<u8>>>,
-    validation_data_option: Option<&Vec<Vec<u8>>>,
     patterns_combined: usize,
     hist: bool,
 ) {
@@ -28,11 +27,8 @@ fn results(
             .unwrap()
     });
     let mut b_multi_pattern: MultiPattern;
-    if let Some(validation_data) = validation_data_option {
-        b_multi_pattern = best_multi_pattern(validation_data, &final_patterns, patterns_combined);
-    } else {
-        b_multi_pattern = best_multi_pattern(training_data, &final_patterns, patterns_combined);
-    }
+
+    b_multi_pattern = best_multi_pattern(training_data, &final_patterns, patterns_combined);
 
     println!("trained in {:.2?}", start.elapsed());
 
@@ -119,13 +115,12 @@ fn run_bottomup(args: Args) {
     );
 
     let start = Instant::now();
-    let final_patterns = bottomup(&training_data, &args);
+    let final_patterns = bottomup(&training_data, validation_data_option.as_ref(), &args);
     results(
         final_patterns.clone(),
         start,
         &training_data,
         testing_data_option.as_ref(),
-        validation_data_option.as_ref(),
         args.patterns_combined,
         args.hist,
     );
