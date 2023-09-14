@@ -3,21 +3,25 @@ mod common;
 mod distinguishers;
 
 use crate::bottomup::bottomup;
-use crate::common::{p_value, z_score, Args};
+use crate::common::{p_value, z_score, Args, Data};
 use crate::distinguishers::{
-    best_multi_pattern, evaluate_distinguisher, Distinguisher, Histogram, MultiPattern, Pattern,
+    best_multi_pattern, evaluate_distinguisher, Distinguisher, Histogram, Pattern,
 };
 
 use clap::Parser;
 use common::prepare_data;
-use std::collections::HashSet;
 use std::time::Instant;
+
+fn print_results(p_value: f64, z_score: f64) {
+    println!("z-score: {z_score}");
+    println!("p-value: {p_value:.0e}");
+}
 
 fn results(
     mut final_patterns: Vec<Pattern>,
     start: Instant,
-    training_data: &[Vec<u8>],
-    testing_data_option: Option<&Vec<Vec<u8>>>,
+    training_data: &Data,
+    testing_data_option: Option<&Data>,
     patterns_combined: usize,
     hist: bool,
 ) {
@@ -26,28 +30,17 @@ fn results(
             .partial_cmp(&f64::abs(a.z_score.unwrap()))
             .unwrap()
     });
-    let mut b_multi_pattern: MultiPattern;
-
-    b_multi_pattern = best_multi_pattern(training_data, &final_patterns, patterns_combined);
+    let mut best_mp = best_multi_pattern(training_data, &final_patterns, patterns_combined);
 
     println!("trained in {:.2?}", start.elapsed());
 
-    println!("z-score: {}", b_multi_pattern.z_score.unwrap());
-    println!("best multi-pattern: {b_multi_pattern:?}");
+    println!("z-score: {}", best_mp.z_score.unwrap());
+    println!("best multi-pattern: {best_mp:?}");
 
     if let Some(testing_data) = testing_data_option {
-        println!(
-            "z-score: {}",
-            evaluate_distinguisher(&mut b_multi_pattern, testing_data)
-        );
-        println!(
-            "p-value: {:.0e}",
-            p_value(
-                b_multi_pattern.get_count(),
-                testing_data.len(),
-                b_multi_pattern.probability
-            )
-        );
+        let z_score = evaluate_distinguisher(&mut best_mp, testing_data);
+        let p_value = p_value(best_mp.get_count(), testing_data.len(), best_mp.probability);
+        print_results(p_value, z_score);
     }
     if hist {
         hist_result(final_patterns, training_data, testing_data_option);
@@ -56,53 +49,31 @@ fn results(
 
 fn hist_result(
     final_patterns: Vec<Pattern>,
-    training_data: &[Vec<u8>],
-    testing_data_option: Option<&Vec<Vec<u8>>>,
+    training_data: &Data,
+    testing_data_option: Option<&Data>,
 ) {
     println!("\n-- histograms --\n");
-    let mut bits = HashSet::new();
+    let bits = final_patterns[0].bits.clone();
 
-    for p in final_patterns.iter().take(1) {
-        bits.extend(p.bits.clone());
-    }
+    println!("number of bits: {}", bits.len());
 
-    let mut bits_vec: Vec<usize> = bits.into_iter().collect();
-    bits_vec.sort();
-
-    println!("number of bits: {}", bits_vec.len());
-
-    if bits_vec.len() > 16 {
+    if bits.len() > 20 {
         println!("Too many bits in pattern, can't produce hist result.");
         return;
     }
 
-    let hist = Histogram::get_hist(&bits_vec, training_data);
+    let hist = Histogram::get_hist(&bits, training_data);
 
     println!("z-score: {}", hist.z_score);
 
     if let Some(testing_data) = testing_data_option {
-        let test_hist = Histogram::get_hist(&hist.bits, testing_data);
+        let count = hist.evaluate(testing_data);
+        let prob = 2.0_f64.powf(-(hist.bits.len() as f64)) * (hist.best_division as f64);
 
-        let mut count = 0;
-        for k in 0..hist.best_division {
-            count += test_hist._bins[hist.sorted_indices[k]];
-        }
-        let prob = 2.0_f64.powf(-(hist.bits.len() as f64));
-        let z = z_score(
-            testing_data.len(),
-            count,
-            prob * (hist.best_division as f64),
-        );
+        let z = z_score(testing_data.len(), count, prob);
+        let p_val = p_value(count, testing_data.len(), prob);
 
-        println!("z-score: {}", z);
-        println!(
-            "p-value: {:.0e}",
-            p_value(
-                count,
-                testing_data.len(),
-                prob * (hist.best_division as f64)
-            )
-        );
+        print_results(p_val, z);
     }
 }
 

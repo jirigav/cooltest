@@ -1,4 +1,4 @@
-use crate::common::{bits_block_eval, z_score};
+use crate::common::{bits_block_eval, z_score, Data};
 use core::fmt;
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -14,7 +14,7 @@ pub(crate) struct Histogram {
 }
 
 impl Histogram {
-    pub(crate) fn get_hist(bits: &Vec<usize>, data: &[Vec<u8>]) -> Histogram {
+    pub(crate) fn get_hist(bits: &Vec<usize>, data: &Data) -> Histogram {
         let mut hist = vec![0; 2_usize.pow(bits.len() as u32)];
         for block in data {
             hist[bits_block_eval(bits, block)] += 1;
@@ -45,6 +45,18 @@ impl Histogram {
             best_division: best_i,
             z_score: max_z,
         }
+    }
+
+    pub(crate) fn evaluate(&self, data: &Data) -> usize {
+        let mut hist2 = vec![0; 2_usize.pow(self.bits.len() as u32)];
+        for block in data {
+            hist2[bits_block_eval(&self.bits, block)] += 1;
+        }
+        let mut count = 0;
+        for k in 0..self.best_division {
+            count += hist2[self.sorted_indices[k]];
+        }
+        count
     }
 }
 
@@ -228,7 +240,7 @@ impl Distinguisher for MultiPattern {
     }
 }
 
-pub(crate) fn best_multi_pattern(data: &[Vec<u8>], patterns: &[Pattern], n: usize) -> MultiPattern {
+pub(crate) fn best_multi_pattern(data: &Data, patterns: &[Pattern], n: usize) -> MultiPattern {
     let mut best_mp: Option<MultiPattern> = None;
     let mut max_z = 0.0;
     for ps in patterns.iter().combinations(n) {

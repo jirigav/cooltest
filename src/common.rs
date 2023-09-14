@@ -2,6 +2,8 @@ use clap::Parser;
 use pyo3::prelude::*;
 use std::fs;
 
+pub(crate) type Data = Vec<Vec<u8>>;
+
 pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
 }
@@ -61,7 +63,7 @@ pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
     result
 }
 
-fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
+fn load_data(path: &str, block_size: usize) -> Data {
     let len_of_block_in_bytes = block_size / 8;
     fs::read(path)
         .unwrap()
@@ -75,7 +77,7 @@ pub(crate) fn prepare_data(
     block_size: usize,
     halving: bool,
     validation: bool,
-) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>) {
+) -> (Data, Option<Data>, Option<Data>) {
     let mut training_data = load_data(data_source, block_size);
     let mut testing_data_option = None;
     let mut validation_data_option = None;
