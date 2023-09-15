@@ -96,6 +96,29 @@ pub(crate) fn prepare_data(
     (training_data, validation_data_option, testing_data_option)
 }
 
+pub(crate) fn transform_data(data: &Data, block_size: usize) -> Vec<Vec<u64>> {
+    if data.len()%64 != 0{
+        panic!("can not transform data, number of blocks must be divisible by 64");
+    }
+
+    let mut result = Vec::new();
+
+    for blocks in data.chunks(64){
+        let mut ints = vec![0_u64; block_size];
+        let mut v = 1;
+        for block in blocks{
+            for i in 0..block_size{
+                if bit_value_in_block(i, block){
+                    ints[i] += v;
+                }
+            }
+            v *= 2;
+        }
+        result.push(ints);
+    }
+    result
+}
+
 pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
     pyo3::prepare_freethreaded_python();
     Python::with_gil(|py| {
