@@ -58,6 +58,48 @@ fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) 
         .collect()
 }
 
+fn count_combinations(n: usize, r: usize) -> usize {
+    if r > n {
+        0
+    } else {
+        (1..=r.min(n - r)).fold(1, |acc, val| acc * (n - val + 1) / val)
+    }
+}
+
+fn fast_phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
+    let m = (0..2_u8.pow(base_degree as u32))
+    .map(|x| {
+        (0..base_degree)
+            .map(|i| bit_value_in_block(i, &[x]))
+            .collect_vec()
+    })
+    .collect_vec();
+
+
+    let mut counts = vec![vec![0; 2_u32.pow(base_degree as u32) as usize]; count_combinations(block_size, base_degree)];
+    let bits = (0..block_size).combinations(base_degree).collect_vec();
+    for block in data{
+        counts.par_iter_mut().enumerate().for_each(|(i, c)| {
+            c[bits_block_eval(&bits[i], block)] += 1;
+        })
+    }
+
+    let mut best: Vec<(u32, (&Vec<usize>, &Vec<bool>))> = counts.into_par_iter().enumerate().map(|(i, c)| {
+        let max_count = c.iter().max().unwrap();
+        (*max_count, (&bits[i], &m[c.iter().position(|x| x == max_count).unwrap()]))
+    }).collect();
+    best.sort_by(|a, b| b.0.cmp(&a.0));
+    best.into_iter().take(k).map(|(count, (bits, values))| Pattern {
+        length: base_degree,
+        bits: bits.clone(),
+        values: values.clone(),
+        count: Some(count as usize),
+        z_score: None,
+        validation_z_score: None,
+    })
+    .collect()
+}
+
 fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: usize) -> bool {
     let p_new = 2_f64.powf(-(new_length as f64));
     old_z_score <= z_score(samples, count_new, p_new)
@@ -215,7 +257,7 @@ pub(crate) fn bottomup(
     args: &Args,
 ) -> Vec<Pattern> {
     let mut start = Instant::now();
-    let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
+    let top_k = fast_phase_one(data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
     let r = phase_two(
