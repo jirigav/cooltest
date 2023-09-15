@@ -1,57 +1,88 @@
 use std::time::Instant;
 
-use crate::common::{bit_value_in_block, bits_block_eval, z_score, Args};
+use crate::common::{bit_value_in_block, transform_data, z_score, Args, Data};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
 
-fn phase_one(data: &[Vec<u8>], k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
+fn count_combinations(n: usize, r: usize) -> usize {
+    if r > n {
+        0
+    } else {
+        (1..=r.min(n - r)).fold(1, |acc, val| acc * (n - val + 1) / val)
+    }
+}
+
+fn multi_eval(
+    negations_index: usize,
+    bits: &[usize],
+    tr_data: &[u128],
+    mask: u128,
+    is_last: bool,
+) -> u128 {
+    let mut result = u128::MAX;
+
+    for (i, b) in bits.iter().enumerate() {
+        if ((negations_index >> i) & 1) == 1 {
+            result &= tr_data[*b] ^ u128::MAX;
+        } else {
+            result &= tr_data[*b];
+        }
+    }
+    if is_last {
+        result & mask
+    } else {
+        result
+    }
+}
+
+fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
     let m = (0..2_u8.pow(base_degree as u32))
+        .rev()
         .map(|x| {
             (0..base_degree)
                 .map(|i| bit_value_in_block(i, &[x]))
                 .collect_vec()
         })
         .collect_vec();
-    let mut best_patterns = vec![(0, (Vec::new(), Vec::new())); k];
 
-    for bits in (0..block_size).combinations(base_degree) {
-        let hist = data
-            .par_iter()
-            .map(|block| bits_block_eval(&bits, block))
-            .fold_with(vec![0; 2_usize.pow(base_degree as u32)], |mut a, b| {
-                a[b] += 1;
-                a
-            })
-            .reduce(
-                || vec![0; 2_usize.pow(base_degree as u32)],
-                |mut a: Vec<usize>, b: Vec<usize>| {
-                    a = a.iter_mut().zip(b).map(|(a, b)| *a + b).collect();
-                    a
-                },
-            );
+    let (transformed_data, mask) = transform_data(data, block_size);
 
-        let max_count = hist.iter().max().unwrap();
+    let dises_per_bits = 2_usize.pow(base_degree as u32);
+    let num_of_dises = count_combinations(block_size, base_degree) * dises_per_bits;
+    let mut counts: Vec<u32> = vec![0; num_of_dises];
+    let bits = (0..block_size).combinations(base_degree).collect_vec();
 
-        if max_count > &best_patterns[k - 1].0 {
-            best_patterns[k - 1] = (
-                *max_count,
-                (
-                    bits,
-                    m[hist.iter().position(|x| x == max_count).unwrap()].clone(),
-                ),
-            );
-            best_patterns.sort_unstable_by(|a, b| b.0.cmp(&a.0));
-        }
+    let mut it = transformed_data.iter().peekable();
+    while let Some(blocks) = it.next() {
+        let is_last = it.peek().is_none();
+
+        counts.par_iter_mut().enumerate().for_each(|(i, c)| {
+            let bits_index = i / dises_per_bits;
+            let negations_index = i % dises_per_bits;
+            *c +=
+                multi_eval(negations_index, &bits[bits_index], blocks, mask, is_last).count_ones();
+        })
     }
 
-    best_patterns
-        .into_iter()
+    let mut best: Vec<_> = counts
+        .into_par_iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let bits_index = i / dises_per_bits;
+            let negations_index = i % dises_per_bits;
+            (c, (&bits[bits_index], &m[negations_index]))
+        })
+        .collect();
+
+    best.sort_by(|a, b| b.0.cmp(&a.0));
+    best.into_iter()
+        .take(k)
         .map(|(count, (bits, values))| Pattern {
             length: base_degree,
-            bits,
-            values,
-            count: Some(count),
+            bits: bits.clone(),
+            values: values.clone(),
+            count: Some(count as usize),
             z_score: None,
             validation_z_score: None,
         })
@@ -129,7 +160,6 @@ fn improving(
 
                 new_pattern.validation_z_score = Some(valid_z);
             }
-
             new_patterns.push(new_pattern);
         }
     }
@@ -210,7 +240,7 @@ fn phase_two(
 }
 
 pub(crate) fn bottomup(
-    data: &[Vec<u8>],
+    data: &Data,
     validation_data_option: Option<&Vec<Vec<u8>>>,
     args: &Args,
 ) -> Vec<Pattern> {

@@ -96,6 +96,26 @@ pub(crate) fn prepare_data(
     (training_data, validation_data_option, testing_data_option)
 }
 
+/// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
+pub(crate) fn transform_data(data: &Data, block_size: usize) -> (Vec<Vec<u128>>, u128) {
+    let mut result = Vec::new();
+
+    for blocks in data.chunks(128) {
+        let mut ints = vec![0_u128; block_size];
+        let mut v = 1;
+        for block in blocks {
+            for (i, int) in ints.iter_mut().enumerate().take(block_size) {
+                if bit_value_in_block(i, block) {
+                    *int += v;
+                }
+            }
+            v *= 2;
+        }
+        result.push(ints);
+    }
+    (result, 2_u128.pow((data.len() % 128) as u32) - 1)
+}
+
 pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
     pyo3::prepare_freethreaded_python();
     Python::with_gil(|py| {
