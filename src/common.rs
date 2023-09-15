@@ -96,15 +96,12 @@ pub(crate) fn prepare_data(
     (training_data, validation_data_option, testing_data_option)
 }
 
-pub(crate) fn transform_data(data: &Data, block_size: usize) -> Vec<Vec<u64>> {
-    if data.len() % 64 != 0 {
-        panic!("can not transform data, number of blocks must be divisible by 64");
-    }
-
+/// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
+pub(crate) fn transform_data(data: &Data, block_size: usize) -> (Vec<Vec<u128>>, u128) {
     let mut result = Vec::new();
 
-    for blocks in data.chunks(64) {
-        let mut ints = vec![0_u64; block_size];
+    for blocks in data.chunks(128) {
+        let mut ints = vec![0_u128; block_size];
         let mut v = 1;
         for block in blocks {
             for (i, int) in ints.iter_mut().enumerate().take(block_size) {
@@ -116,7 +113,7 @@ pub(crate) fn transform_data(data: &Data, block_size: usize) -> Vec<Vec<u64>> {
         }
         result.push(ints);
     }
-    result
+    (result, 2_u128.pow((data.len() % 128) as u32) - 1)
 }
 
 pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {

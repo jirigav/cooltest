@@ -13,21 +13,27 @@ fn count_combinations(n: usize, r: usize) -> usize {
     }
 }
 
-fn multi_eval(index: usize, base_degree: usize, bits: &[Vec<usize>], tr_data: &[u64]) -> u64 {
-    let dises_per_bits = 2_usize.pow(base_degree as u32);
-    let bits_index = index / dises_per_bits;
-    let negations_index = index % dises_per_bits;
+fn multi_eval(
+    negations_index: usize,
+    bits: &[usize],
+    tr_data: &[u128],
+    mask: u128,
+    is_last: bool,
+) -> u128 {
+    let mut result = u128::MAX;
 
-    let mut result = u64::MAX;
-
-    for (i, b) in bits[bits_index].iter().enumerate() {
+    for (i, b) in bits.iter().enumerate() {
         if ((negations_index >> i) & 1) == 1 {
-            result &= tr_data[*b] ^ u64::MAX;
+            result &= tr_data[*b] ^ u128::MAX;
         } else {
             result &= tr_data[*b];
         }
     }
-    result
+    if is_last {
+        result & mask
+    } else {
+        result
+    }
 }
 
 fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
@@ -40,20 +46,25 @@ fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Ve
         })
         .collect_vec();
 
-    let transformed_data = transform_data(data, block_size);
+    let (transformed_data, mask) = transform_data(data, block_size);
 
-    let num_of_dises =
-        count_combinations(block_size, base_degree) * 2_usize.pow(base_degree as u32);
+    let dises_per_bits = 2_usize.pow(base_degree as u32);
+    let num_of_dises = count_combinations(block_size, base_degree) * dises_per_bits;
     let mut counts: Vec<u32> = vec![0; num_of_dises];
     let bits = (0..block_size).combinations(base_degree).collect_vec();
 
-    for blocks in transformed_data {
+    let mut it = transformed_data.iter().peekable();
+    while let Some(blocks) = it.next() {
+        let is_last = it.peek().is_none();
+
         counts.par_iter_mut().enumerate().for_each(|(i, c)| {
-            *c += multi_eval(i, base_degree, &bits, &blocks).count_ones();
+            let bits_index = i / dises_per_bits;
+            let negations_index = i % dises_per_bits;
+            *c +=
+                multi_eval(negations_index, &bits[bits_index], blocks, mask, is_last).count_ones();
         })
     }
 
-    let dises_per_bits = 2_usize.pow(base_degree as u32);
     let mut best: Vec<_> = counts
         .into_par_iter()
         .enumerate()
@@ -149,7 +160,6 @@ fn improving(
 
                 new_pattern.validation_z_score = Some(valid_z);
             }
-
             new_patterns.push(new_pattern);
         }
     }
@@ -236,7 +246,6 @@ pub(crate) fn bottomup(
 ) -> Vec<Pattern> {
     let mut start = Instant::now();
     let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
-    println!("{:?}", top_k);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
     let r = phase_two(
