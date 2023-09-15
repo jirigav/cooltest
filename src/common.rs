@@ -97,19 +97,19 @@ pub(crate) fn prepare_data(
 }
 
 pub(crate) fn transform_data(data: &Data, block_size: usize) -> Vec<Vec<u64>> {
-    if data.len()%64 != 0{
+    if data.len() % 64 != 0 {
         panic!("can not transform data, number of blocks must be divisible by 64");
     }
 
     let mut result = Vec::new();
 
-    for blocks in data.chunks(64){
+    for blocks in data.chunks(64) {
         let mut ints = vec![0_u64; block_size];
         let mut v = 1;
-        for block in blocks{
-            for i in 0..block_size{
-                if bit_value_in_block(i, block){
-                    ints[i] += v;
+        for block in blocks {
+            for (i, int) in ints.iter_mut().enumerate().take(block_size) {
+                if bit_value_in_block(i, block) {
+                    *int += v;
                 }
             }
             v *= 2;

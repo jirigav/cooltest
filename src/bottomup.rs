@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::common::{bit_value_in_block, z_score, Args, transform_data, Data};
+use crate::common::{bit_value_in_block, transform_data, z_score, Args, Data};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -13,15 +13,15 @@ fn count_combinations(n: usize, r: usize) -> usize {
     }
 }
 
-fn multi_eval(index: usize, base_degree: usize, bits: &Vec<Vec<usize>>, tr_data: &Vec<u64>) -> u64 {
+fn multi_eval(index: usize, base_degree: usize, bits: &[Vec<usize>], tr_data: &[u64]) -> u64 {
     let dises_per_bits = 2_usize.pow(base_degree as u32);
-    let bits_index = index/dises_per_bits;
-    let negations_index = index%dises_per_bits;
+    let bits_index = index / dises_per_bits;
+    let negations_index = index % dises_per_bits;
 
     let mut result = u64::MAX;
 
     for (i, b) in bits[bits_index].iter().enumerate() {
-        if ((negations_index >> i)&1) == 1 {
+        if ((negations_index >> i) & 1) == 1 {
             result &= tr_data[*b] ^ u64::MAX;
         } else {
             result &= tr_data[*b];
@@ -31,43 +31,51 @@ fn multi_eval(index: usize, base_degree: usize, bits: &Vec<Vec<usize>>, tr_data:
 }
 
 fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
-    let m = (0..2_u8.pow(base_degree as u32)).rev()
-    .map(|x| {
-        (0..base_degree)
-            .map(|i| bit_value_in_block(i, &[x]))
-            .collect_vec()
-    })
-    .collect_vec();
+    let m = (0..2_u8.pow(base_degree as u32))
+        .rev()
+        .map(|x| {
+            (0..base_degree)
+                .map(|i| bit_value_in_block(i, &[x]))
+                .collect_vec()
+        })
+        .collect_vec();
 
     let transformed_data = transform_data(data, block_size);
 
-    let num_of_dises = count_combinations(block_size, base_degree) * 2_usize.pow(base_degree as u32);
+    let num_of_dises =
+        count_combinations(block_size, base_degree) * 2_usize.pow(base_degree as u32);
     let mut counts: Vec<u32> = vec![0; num_of_dises];
     let bits = (0..block_size).combinations(base_degree).collect_vec();
 
-    for blocks in transformed_data{
-        counts.par_iter_mut().enumerate().for_each(|(i,c)| {
+    for blocks in transformed_data {
+        counts.par_iter_mut().enumerate().for_each(|(i, c)| {
             *c += multi_eval(i, base_degree, &bits, &blocks).count_ones();
         })
     }
 
     let dises_per_bits = 2_usize.pow(base_degree as u32);
-    let mut best: Vec<(u32, (&Vec<usize>, &Vec<bool>))> = counts.into_par_iter().enumerate().map(|(i, c)| {
-        let bits_index = i/dises_per_bits;
-        let negations_index = i%dises_per_bits;
-        (c, (&bits[bits_index], &m[negations_index]))
-    }).collect();
-    
+    let mut best: Vec<_> = counts
+        .into_par_iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let bits_index = i / dises_per_bits;
+            let negations_index = i % dises_per_bits;
+            (c, (&bits[bits_index], &m[negations_index]))
+        })
+        .collect();
+
     best.sort_by(|a, b| b.0.cmp(&a.0));
-    best.into_iter().take(k).map(|(count, (bits, values))| Pattern {
-        length: base_degree,
-        bits: bits.clone(),
-        values: values.clone(),
-        count: Some(count as usize),
-        z_score: None,
-        validation_z_score: None,
-    })
-    .collect()
+    best.into_iter()
+        .take(k)
+        .map(|(count, (bits, values))| Pattern {
+            length: base_degree,
+            bits: bits.clone(),
+            values: values.clone(),
+            count: Some(count as usize),
+            z_score: None,
+            validation_z_score: None,
+        })
+        .collect()
 }
 
 fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: usize) -> bool {
