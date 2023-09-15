@@ -14,7 +14,7 @@ fn count_combinations(n: usize, r: usize) -> usize {
 }
 
 fn multi_eval(
-    negations_index: usize,
+    bits_signs: usize,
     bits: &[usize],
     tr_data: &[u128],
     mask: u128,
@@ -23,10 +23,10 @@ fn multi_eval(
     let mut result = u128::MAX;
 
     for (i, b) in bits.iter().enumerate() {
-        if ((negations_index >> i) & 1) == 1 {
-            result &= tr_data[*b] ^ u128::MAX;
-        } else {
+        if ((bits_signs >> i) & 1) == 1 {
             result &= tr_data[*b];
+        } else {
+            result &= tr_data[*b] ^ u128::MAX;
         }
     }
     if is_last {
@@ -36,9 +36,8 @@ fn multi_eval(
     }
 }
 
-fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
+fn phase_one(data: &[Vec<u128>], mask: u128, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
     let m = (0..2_u8.pow(base_degree as u32))
-        .rev()
         .map(|x| {
             (0..base_degree)
                 .map(|i| bit_value_in_block(i, &[x]))
@@ -46,22 +45,22 @@ fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Ve
         })
         .collect_vec();
 
-    let (transformed_data, mask) = transform_data(data, block_size);
+    
 
     let dises_per_bits = 2_usize.pow(base_degree as u32);
     let num_of_dises = count_combinations(block_size, base_degree) * dises_per_bits;
     let mut counts: Vec<u32> = vec![0; num_of_dises];
     let bits = (0..block_size).combinations(base_degree).collect_vec();
 
-    let mut it = transformed_data.iter().peekable();
+    let mut it = data.iter().peekable();
     while let Some(blocks) = it.next() {
         let is_last = it.peek().is_none();
 
         counts.par_iter_mut().enumerate().for_each(|(i, c)| {
             let bits_index = i / dises_per_bits;
-            let negations_index = i % dises_per_bits;
+            let bits_signs = i % dises_per_bits;
             *c +=
-                multi_eval(negations_index, &bits[bits_index], blocks, mask, is_last).count_ones();
+                multi_eval(bits_signs, &bits[bits_index], blocks, mask, is_last).count_ones();
         })
     }
 
@@ -70,21 +69,22 @@ fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Ve
         .enumerate()
         .map(|(i, c)| {
             let bits_index = i / dises_per_bits;
-            let negations_index = i % dises_per_bits;
-            (c, (&bits[bits_index], &m[negations_index]))
+            let bits_values_index = i % dises_per_bits;
+            (c, (&bits[bits_index], &m[bits_values_index]), bits_values_index)
         })
         .collect();
 
     best.sort_by(|a, b| b.0.cmp(&a.0));
     best.into_iter()
         .take(k)
-        .map(|(count, (bits, values))| Pattern {
+        .map(|(count, (bits, values), signs)| Pattern {
             length: base_degree,
             bits: bits.clone(),
             values: values.clone(),
             count: Some(count as usize),
             z_score: None,
             validation_z_score: None,
+            bits_signs: signs,
         })
         .collect()
 }
@@ -166,13 +166,15 @@ fn improving(
     new_patterns
 }
 
-fn phase_two(
+fn faster_phase_two(
     k: usize,
     mut top_k: Vec<Pattern>,
-    data: &[Vec<u8>],
-    validation_data_option: Option<&Vec<Vec<u8>>>,
+    data: &[Vec<u128>],
+    mask: u128,
+    validation_data_option: Option<&Vec<Vec<u8>>>, // CHANGE THIS TOO
     min_difference: usize,
     block_size: usize,
+    blocks_count: usize,
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
 
@@ -186,21 +188,24 @@ fn phase_two(
             hists.push(vec![(0, 0); block_size]);
         }
 
-        for block in data {
-            for (i, pattern) in top_k.iter().enumerate() {
-                if pattern.evaluate(block) {
-                    for b in 0..block_size {
-                        if pattern.bits.contains(&b) {
-                            continue;
-                        }
-                        if bit_value_in_block(b, block) {
-                            hists[i][b].1 += 1;
-                        } else {
-                            hists[i][b].0 += 1;
-                        }
+        let mut it = data.iter().peekable();
+        
+        while let Some(blocks) = it.next() {
+            let is_last = it.peek().is_none();
+
+            hists.par_iter_mut().enumerate().for_each(|(i, hist)|{
+                let mut bits = top_k[i].bits.clone();
+                bits.push(0);
+                for b in 0..block_size {
+                    if top_k[i].bits.contains(&b) {
+                        continue;
                     }
+                    
+                    bits[top_k[i].length] = b;
+                    hist[b].1 += multi_eval(top_k[i].bits_signs + 2_usize.pow(top_k[i].length as u32), &bits, blocks, mask, is_last).count_ones() as usize;
+                    hist[b].0 += multi_eval(top_k[i].bits_signs, &bits, blocks, mask, is_last).count_ones() as usize;
                 }
-            }
+            })
         }
 
         let mut new_top_k: Vec<Pattern> = Vec::with_capacity(top_k.len());
@@ -210,7 +215,7 @@ fn phase_two(
                 validation_data_option,
                 &mut top_k[i],
                 &hists[i],
-                data.len(),
+                blocks_count,
                 min_difference,
             );
 
@@ -245,17 +250,12 @@ pub(crate) fn bottomup(
     args: &Args,
 ) -> Vec<Pattern> {
     let mut start = Instant::now();
-    let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
+    let (transformed_data, mask) = transform_data(data, args.block_size);
+    let top_k = phase_one(&transformed_data, mask, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let r = phase_two(
-        args.k,
-        top_k,
-        data,
-        validation_data_option,
-        args.min_difference,
-        args.block_size,
-    );
+
+    let r = faster_phase_two(args.k, top_k, &transformed_data, mask, validation_data_option, args.min_difference, args.block_size, data.len());
     println!("phase two {:.2?}", start.elapsed());
     r
 }

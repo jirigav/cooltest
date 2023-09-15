@@ -82,6 +82,7 @@ pub(crate) struct Pattern {
     pub(crate) count: Option<usize>,
     pub(crate) z_score: Option<f64>,
     pub(crate) validation_z_score: Option<f64>,
+    pub(super) bits_signs: usize,
 }
 
 impl Pattern {
@@ -103,6 +104,7 @@ impl Pattern {
             bits_values.push((bit, value));
             bits_values.sort_by(|a, b| a.0.cmp(&b.0));
             (self.bits, self.values) = bits_values.into_iter().unzip();
+            self.bits_signs = self.values.iter().enumerate().map(|(i, v)| {if *v {2_usize.pow(i as u32)} else {0}}).sum();
             self.count = None;
             self.z_score = None;
         }
@@ -308,6 +310,7 @@ mod tests {
                     count: None,
                     z_score: None,
                     validation_z_score: None,
+                    bits_signs: 1,
                 },
                 Pattern {
                     length: 3,
@@ -316,6 +319,7 @@ mod tests {
                     count: None,
                     z_score: None,
                     validation_z_score: None,
+                    bits_signs: 7,
                 },
             ]
             .to_vec(),
@@ -342,10 +346,11 @@ mod tests {
                     let p = Pattern {
                         length: bits.len(),
                         bits,
-                        values,
+                        values: values.clone(),
                         count: None,
                         z_score: None,
                         validation_z_score: None,
+                        bits_signs: values.iter().enumerate().map(|(i, v)| {if *v {2_usize.pow(i as u32)} else {0}}).sum(),
                     };
                     patterns.push(p);
                 }
