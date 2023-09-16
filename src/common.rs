@@ -58,7 +58,7 @@ pub(crate) fn count_combinations(n: usize, r: usize) -> usize {
     }
 }
 
-pub(crate) struct Data{
+pub(crate) struct Data {
     pub(crate) data: Vec<Vec<u128>>,
     pub(crate) mask: u128,
     pub(crate) num_of_blocks: usize,
@@ -81,7 +81,7 @@ pub(crate) fn multi_eval(
         }
     }
     if is_last {
-        result = result & mask;
+        result &= mask;
     }
     result
 }
@@ -95,7 +95,6 @@ pub(crate) fn multi_eval_count(
 ) -> u32 {
     multi_eval(bits_signs, bits, tr_data, mask, is_last).count_ones()
 }
-
 
 fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
     let len_of_block_in_bytes = block_size / 8;
@@ -127,7 +126,11 @@ pub(crate) fn prepare_data(
         testing_data_option = Some(testing_data.to_vec());
         training_data = tr_data.to_vec();
     }
-    (transform_data(Some(training_data), block_size).unwrap(), transform_data(validation_data_option, block_size), transform_data(testing_data_option, block_size))
+    (
+        transform_data(Some(training_data), block_size).unwrap(),
+        transform_data(validation_data_option, block_size),
+        transform_data(testing_data_option, block_size),
+    )
 }
 
 /// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
@@ -135,20 +138,24 @@ pub(crate) fn transform_data(option_data: Option<Vec<Vec<u8>>>, block_size: usiz
     if let Some(data) = option_data {
         let mut result = Vec::new();
 
-    for blocks in data.chunks(128) {
-        let mut ints = vec![0_u128; block_size];
-        let mut v = 1;
-        for block in blocks {
-            for (i, int) in ints.iter_mut().enumerate().take(block_size) {
-                if bit_value_in_block(i, block) {
-                    *int += v;
+        for blocks in data.chunks(128) {
+            let mut ints = vec![0_u128; block_size];
+            let mut v = 1;
+            for block in blocks {
+                for (i, int) in ints.iter_mut().enumerate().take(block_size) {
+                    if bit_value_in_block(i, block) {
+                        *int += v;
+                    }
                 }
+                v *= 2;
             }
-            v *= 2;
+            result.push(ints);
         }
-        result.push(ints);
-    }
-    Some(Data { data: result, mask: 2_u128.pow((data.len() % 128) as u32) - 1, num_of_blocks: data.len() })
+        Some(Data {
+            data: result,
+            mask: 2_u128.pow((data.len() % 128) as u32) - 1,
+            num_of_blocks: data.len(),
+        })
     } else {
         None
     }

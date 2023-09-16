@@ -39,7 +39,11 @@ fn results(
 
     if let Some(testing_data) = testing_data_option {
         let z_score = evaluate_distinguisher(&mut best_mp, testing_data);
-        let p_value = p_value(best_mp.get_count(), testing_data.num_of_blocks, best_mp.probability);
+        let p_value = p_value(
+            best_mp.get_count(),
+            testing_data.num_of_blocks,
+            best_mp.probability,
+        );
         print_results(p_value, z_score);
     }
     if hist {

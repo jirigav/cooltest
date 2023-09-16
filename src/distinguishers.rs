@@ -1,4 +1,4 @@
-use crate::common::{z_score, multi_eval, multi_eval_count, Data};
+use crate::common::{multi_eval, multi_eval_count, z_score, Data};
 use core::fmt;
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -18,10 +18,10 @@ impl Histogram {
         let mut hist = vec![0; 2_usize.pow(bits.len() as u32)];
 
         let mut it = data.data.iter().peekable();
-        while let Some(blocks) = it.next(){
+        while let Some(blocks) = it.next() {
             let is_last = it.peek().is_none();
             hist.par_iter_mut().enumerate().for_each(|(i, h)| {
-                *h += multi_eval_count(i, bits, &blocks, data.mask, is_last) as usize;
+                *h += multi_eval_count(i, bits, blocks, data.mask, is_last) as usize;
             })
         }
 
@@ -56,10 +56,10 @@ impl Histogram {
         let mut hist2 = vec![0; 2_usize.pow(self.bits.len() as u32)];
 
         let mut it = data.data.iter().peekable();
-        while let Some(blocks) = it.next(){
+        while let Some(blocks) = it.next() {
             let is_last = it.peek().is_none();
             hist2.par_iter_mut().enumerate().for_each(|(i, h)| {
-                *h += multi_eval_count(i, &self.bits, &blocks, data.mask, is_last) as usize;
+                *h += multi_eval_count(i, &self.bits, blocks, data.mask, is_last) as usize;
             })
         }
         let mut count = 0;
@@ -114,7 +114,12 @@ impl Pattern {
             bits_values.push((bit, value));
             bits_values.sort_by(|a, b| a.0.cmp(&b.0));
             (self.bits, self.values) = bits_values.into_iter().unzip();
-            self.bits_signs = self.values.iter().enumerate().map(|(i, v)| {if *v {2_usize.pow(i as u32)} else {0}}).sum();
+            self.bits_signs = self
+                .values
+                .iter()
+                .enumerate()
+                .map(|(i, v)| if *v { 2_usize.pow(i as u32) } else { 0 })
+                .sum();
             self.count = None;
             self.z_score = None;
         }
@@ -217,7 +222,11 @@ impl MultiPattern {
 
 impl Distinguisher for MultiPattern {
     fn evaluate(&self, blocks: &[u128], mask: u128, is_last: bool) -> u32 {
-        self.patterns.iter().map(|p| p.evaluate_raw(blocks, mask, is_last)).fold(u128::MIN, |acc, x| acc | x).count_ones()
+        self.patterns
+            .iter()
+            .map(|p| p.evaluate_raw(blocks, mask, is_last))
+            .fold(u128::MIN, |acc, x| acc | x)
+            .count_ones()
     }
 
     fn forget_count(&mut self) {
@@ -256,7 +265,13 @@ pub(crate) fn best_multi_pattern(data: &Data, patterns: &[Pattern], n: usize) ->
     let mut max_z = 0.0;
     for ps in patterns.iter().combinations(n) {
         let mut mp = MultiPattern::new(ps.iter().map(|x| x.to_owned().clone()).collect_vec());
-        mp.count = Some(data.data.par_iter().enumerate().map(|(i, blocks)| mp.evaluate(blocks, data.mask, i == len_m1)).sum::<u32>() as usize);
+        mp.count = Some(
+            data.data
+                .par_iter()
+                .enumerate()
+                .map(|(i, blocks)| mp.evaluate(blocks, data.mask, i == len_m1))
+                .sum::<u32>() as usize,
+        );
         let z = mp.z_score(data.num_of_blocks);
         if f64::abs(z) > f64::abs(max_z) {
             best_mp = Some(mp);
@@ -294,7 +309,9 @@ pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
     let len_m1 = data.data.len() - 1;
     distinguisher.forget_count();
     distinguisher.increase_count(
-        data.data.iter().enumerate()
+        data.data
+            .iter()
+            .enumerate()
             .map(|(i, blocks)| distinguisher.evaluate(blocks, data.mask, i == len_m1))
             .sum::<u32>() as usize,
     );
@@ -363,15 +380,30 @@ mod tests {
                         count: None,
                         z_score: None,
                         validation_z_score: None,
-                        bits_signs: values.iter().enumerate().map(|(i, v)| {if *v {2_usize.pow(i as u32)} else {0}}).sum(),
+                        bits_signs: values
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| if *v { 2_usize.pow(i as u32) } else { 0 })
+                            .sum(),
                     };
                     patterns.push(p);
                 }
                 let mp = MultiPattern::new(patterns);
-                let tr_data = transform_data(Some((0..2_usize.pow(16)).map(|x| x.to_le_bytes().to_vec()).collect_vec()), 8).unwrap();
+                let tr_data = transform_data(
+                    Some(
+                        (0..2_usize.pow(16))
+                            .map(|x| x.to_le_bytes().to_vec())
+                            .collect_vec(),
+                    ),
+                    8,
+                )
+                .unwrap();
                 let len_m1 = tr_data.data.len() - 1;
 
-                let count: u32 = tr_data.data.iter().enumerate()
+                let count: u32 = tr_data
+                    .data
+                    .iter()
+                    .enumerate()
                     .map(|(i, blocks)| mp.evaluate(&blocks, tr_data.mask, len_m1 == i))
                     .sum();
 
