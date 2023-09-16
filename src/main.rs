@@ -3,13 +3,13 @@ mod common;
 mod distinguishers;
 
 use crate::bottomup::bottomup;
-use crate::common::{p_value, z_score, Args, Data};
+use crate::common::{p_value, z_score, Args};
 use crate::distinguishers::{
     best_multi_pattern, evaluate_distinguisher, Distinguisher, Histogram, Pattern,
 };
 
 use clap::Parser;
-use common::prepare_data;
+use common::{prepare_data, Data};
 use std::time::Instant;
 
 fn print_results(p_value: f64, z_score: f64) {
@@ -39,7 +39,11 @@ fn results(
 
     if let Some(testing_data) = testing_data_option {
         let z_score = evaluate_distinguisher(&mut best_mp, testing_data);
-        let p_value = p_value(best_mp.get_count(), testing_data.len(), best_mp.probability);
+        let p_value = p_value(
+            best_mp.get_count(),
+            testing_data.num_of_blocks,
+            best_mp.probability,
+        );
         print_results(p_value, z_score);
     }
     if hist {
@@ -70,8 +74,8 @@ fn hist_result(
         let count = hist.evaluate(testing_data);
         let prob = 2.0_f64.powf(-(hist.bits.len() as f64)) * (hist.best_division as f64);
 
-        let z = z_score(testing_data.len(), count, prob);
-        let p_val = p_value(count, testing_data.len(), prob);
+        let z = z_score(testing_data.num_of_blocks, count, prob);
+        let p_val = p_value(count, testing_data.num_of_blocks, prob);
 
         print_results(p_val, z);
     }

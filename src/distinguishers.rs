@@ -1,4 +1,4 @@
-use crate::common::{bits_block_eval, z_score, Data};
+use crate::common::{multi_eval, multi_eval_count, z_score, Data};
 use core::fmt;
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -16,8 +16,13 @@ pub(crate) struct Histogram {
 impl Histogram {
     pub(crate) fn get_hist(bits: &Vec<usize>, data: &Data) -> Histogram {
         let mut hist = vec![0; 2_usize.pow(bits.len() as u32)];
-        for block in data {
-            hist[bits_block_eval(bits, block)] += 1;
+
+        let mut it = data.data.iter().peekable();
+        while let Some(blocks) = it.next() {
+            let is_last = it.peek().is_none();
+            hist.par_iter_mut().enumerate().for_each(|(i, h)| {
+                *h += multi_eval_count(i, bits, blocks, data.mask, is_last) as usize;
+            })
         }
 
         let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
@@ -32,7 +37,7 @@ impl Histogram {
             for k in 0..i {
                 count += hist[indices[k]];
             }
-            let z = z_score(data.len(), count, prob * (i as f64));
+            let z = z_score(data.num_of_blocks, count, prob * (i as f64));
             if z > max_z {
                 max_z = z;
                 best_i = i;
@@ -49,8 +54,13 @@ impl Histogram {
 
     pub(crate) fn evaluate(&self, data: &Data) -> usize {
         let mut hist2 = vec![0; 2_usize.pow(self.bits.len() as u32)];
-        for block in data {
-            hist2[bits_block_eval(&self.bits, block)] += 1;
+
+        let mut it = data.data.iter().peekable();
+        while let Some(blocks) = it.next() {
+            let is_last = it.peek().is_none();
+            hist2.par_iter_mut().enumerate().for_each(|(i, h)| {
+                *h += multi_eval_count(i, &self.bits, blocks, data.mask, is_last) as usize;
+            })
         }
         let mut count = 0;
         for k in 0..self.best_division {
@@ -61,7 +71,7 @@ impl Histogram {
 }
 
 pub(crate) trait Distinguisher {
-    fn evaluate(&self, block: &[u8]) -> bool;
+    fn evaluate(&self, blocks: &[u128], mask: u128, is_last: bool) -> u32;
 
     fn forget_count(&mut self);
 
@@ -82,6 +92,7 @@ pub(crate) struct Pattern {
     pub(crate) count: Option<usize>,
     pub(crate) z_score: Option<f64>,
     pub(crate) validation_z_score: Option<f64>,
+    pub(super) bits_signs: usize,
 }
 
 impl Pattern {
@@ -103,21 +114,25 @@ impl Pattern {
             bits_values.push((bit, value));
             bits_values.sort_by(|a, b| a.0.cmp(&b.0));
             (self.bits, self.values) = bits_values.into_iter().unzip();
+            self.bits_signs = self
+                .values
+                .iter()
+                .enumerate()
+                .map(|(i, v)| if *v { 2_usize.pow(i as u32) } else { 0 })
+                .sum();
             self.count = None;
             self.z_score = None;
         }
     }
+
+    pub(crate) fn evaluate_raw(&self, blocks: &[u128], mask: u128, is_last: bool) -> u128 {
+        multi_eval(self.bits_signs, &self.bits, blocks, mask, is_last)
+    }
 }
 
 impl Distinguisher for Pattern {
-    fn evaluate(&self, block: &[u8]) -> bool {
-        for (val, b) in self.values.iter().zip(&self.bits) {
-            let (byte_index, offset) = (b / 8, b % 8);
-            if u8::from(*val) != ((block[byte_index] >> offset) & 1) {
-                return false;
-            }
-        }
-        true
+    fn evaluate(&self, blocks: &[u128], mask: u128, is_last: bool) -> u32 {
+        multi_eval_count(self.bits_signs, &self.bits, blocks, mask, is_last)
     }
 
     fn z_score(&mut self, samples: usize) -> f64 {
@@ -206,8 +221,12 @@ impl MultiPattern {
 }
 
 impl Distinguisher for MultiPattern {
-    fn evaluate(&self, block: &[u8]) -> bool {
-        self.patterns.iter().any(|p| p.evaluate(block))
+    fn evaluate(&self, blocks: &[u128], mask: u128, is_last: bool) -> u32 {
+        self.patterns
+            .iter()
+            .map(|p| p.evaluate_raw(blocks, mask, is_last))
+            .fold(u128::MIN, |acc, x| acc | x)
+            .count_ones()
     }
 
     fn forget_count(&mut self) {
@@ -241,12 +260,19 @@ impl Distinguisher for MultiPattern {
 }
 
 pub(crate) fn best_multi_pattern(data: &Data, patterns: &[Pattern], n: usize) -> MultiPattern {
+    let len_m1 = data.data.len() - 1;
     let mut best_mp: Option<MultiPattern> = None;
     let mut max_z = 0.0;
     for ps in patterns.iter().combinations(n) {
         let mut mp = MultiPattern::new(ps.iter().map(|x| x.to_owned().clone()).collect_vec());
-        mp.count = Some(data.par_iter().filter(|block| mp.evaluate(block)).count());
-        let z = mp.z_score(data.len());
+        mp.count = Some(
+            data.data
+                .par_iter()
+                .enumerate()
+                .map(|(i, blocks)| mp.evaluate(blocks, data.mask, i == len_m1))
+                .sum::<u32>() as usize,
+        );
+        let z = mp.z_score(data.num_of_blocks);
         if f64::abs(z) > f64::abs(max_z) {
             best_mp = Some(mp);
             max_z = z;
@@ -278,20 +304,26 @@ fn any_pairwise_disjoint_patterns(patterns: &[&Pattern]) -> bool {
 
 pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
     distinguisher: &mut P,
-    data: &[Vec<u8>],
+    data: &Data,
 ) -> f64 {
+    let len_m1 = data.data.len() - 1;
     distinguisher.forget_count();
     distinguisher.increase_count(
-        data.iter()
-            .filter(|block| distinguisher.evaluate(block))
-            .count(),
+        data.data
+            .iter()
+            .enumerate()
+            .map(|(i, blocks)| distinguisher.evaluate(blocks, data.mask, i == len_m1))
+            .sum::<u32>() as usize,
     );
-    distinguisher.z_score(data.len())
+    distinguisher.z_score(data.num_of_blocks)
 }
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use rand::Rng;
+
+    use crate::common::transform_data;
 
     use super::Distinguisher;
     use super::MultiPattern;
@@ -308,6 +340,7 @@ mod tests {
                     count: None,
                     z_score: None,
                     validation_z_score: None,
+                    bits_signs: 1,
                 },
                 Pattern {
                     length: 3,
@@ -316,6 +349,7 @@ mod tests {
                     count: None,
                     z_score: None,
                     validation_z_score: None,
+                    bits_signs: 7,
                 },
             ]
             .to_vec(),
@@ -342,18 +376,32 @@ mod tests {
                     let p = Pattern {
                         length: bits.len(),
                         bits,
-                        values,
+                        values: values.clone(),
                         count: None,
                         z_score: None,
                         validation_z_score: None,
+                        bits_signs: values
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| if *v { 2_usize.pow(i as u32) } else { 0 })
+                            .sum(),
                     };
                     patterns.push(p);
                 }
                 let mp = MultiPattern::new(patterns);
+                let tr_data = transform_data(
+                    (0..2_usize.pow(16))
+                        .map(|x| x.to_le_bytes().to_vec())
+                        .collect_vec(),
+                );
+                let len_m1 = tr_data.data.len() - 1;
 
-                let count = (0..2_usize.pow(16))
-                    .filter(|x| mp.evaluate(&x.to_le_bytes()))
-                    .count();
+                let count: u32 = tr_data
+                    .data
+                    .iter()
+                    .enumerate()
+                    .map(|(i, blocks)| mp.evaluate(&blocks, tr_data.mask, len_m1 == i))
+                    .sum();
 
                 assert_eq!(mp.probability, (count as f64) / 2.0_f64.powf(16.0));
             }
