@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use crate::common::{transform_data, z_score, Args, Data, count_combinations, multi_eval_count};
+use crate::common::{transform_data, z_score, Args, count_combinations, multi_eval_count, Data};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
 
-fn phase_one(data: &[Vec<u128>], mask: u128, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
+fn phase_one(data: &Data, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
     let m = (0..2_u8.pow(base_degree as u32))
         .map(|x| {
             (0..base_degree)
@@ -21,7 +21,7 @@ fn phase_one(data: &[Vec<u128>], mask: u128, k: usize, block_size: usize, base_d
     let mut counts: Vec<u32> = vec![0; num_of_dises];
     let bits = (0..block_size).combinations(base_degree).collect_vec();
 
-    let mut it = data.iter().peekable();
+    let mut it = data.data.iter().peekable();
     while let Some(blocks) = it.next() {
         let is_last = it.peek().is_none();
 
@@ -29,7 +29,7 @@ fn phase_one(data: &[Vec<u128>], mask: u128, k: usize, block_size: usize, base_d
             let bits_index = i / dises_per_bits;
             let bits_signs = i % dises_per_bits;
             *c +=
-                multi_eval_count(bits_signs, &bits[bits_index], blocks, mask, is_last);
+                multi_eval_count(bits_signs, &bits[bits_index], blocks, data.mask, is_last);
         })
     }
 
@@ -64,7 +64,7 @@ fn is_improving(old_z_score: f64, count_new: usize, new_length: usize, samples: 
 }
 
 fn improving(
-    validation_data_option: Option<&(Vec<Vec<u128>>, u128)>,
+    validation_data_option: Option<&Data>,
     pattern: &mut Pattern,
     hist: &[(usize, usize)],
     samples: usize,
@@ -72,18 +72,18 @@ fn improving(
 ) -> Vec<Pattern> {
     let mut new_patterns = Vec::new();
     let mut validation = false;
-    let mut validation_data = &(Vec::new(), u128::MIN);
+    let mut validation_data = &Data { data: Vec::new(), mask: 0, num_of_blocks: 0 };
     if let Some(data) = validation_data_option {
         validation = true;
         validation_data = data;
     }
     if validation && pattern.validation_z_score.is_none() {
-        let len_m1 = validation_data.0.len() -1;
+        let len_m1 = validation_data.data.len() -1;
         pattern.validation_z_score = Some(z_score(
-            len_m1*128 + validation_data.1.count_ones() as usize,
-            validation_data.0
+            validation_data.num_of_blocks,
+            validation_data.data
                 .iter().enumerate()
-                .map(|(i, blocks)| multi_eval_count(pattern.bits_signs, &pattern.bits, blocks, validation_data.1, i == len_m1))
+                .map(|(i, blocks)| multi_eval_count(pattern.bits_signs, &pattern.bits, blocks, validation_data.mask, i == len_m1))
                 .sum::<u32>() as usize,
             2.0_f64.powf(-(pattern.length as f64)),
         ));
@@ -116,12 +116,12 @@ fn improving(
             if validation {
                 let new_z = new_pattern.z_score(samples);
 
-                let len_m1 = validation_data.0.len() -1;
+                let len_m1 = validation_data.data.len() -1;
                 let valid_z = z_score(
-                    len_m1*128 + validation_data.1.count_ones() as usize,
-                    validation_data.0
+                    validation_data.num_of_blocks,
+                    validation_data.data
                         .iter().enumerate()
-                        .map(|(i, blocks)| multi_eval_count(new_pattern.bits_signs, &new_pattern.bits, blocks, validation_data.1, i == len_m1))
+                        .map(|(i, blocks)| multi_eval_count(new_pattern.bits_signs, &new_pattern.bits, blocks, validation_data.mask, i == len_m1))
                         .sum::<u32>() as usize,
                     2.0_f64.powf(-(new_pattern.length as f64)),
                 );
@@ -138,15 +138,13 @@ fn improving(
     new_patterns
 }
 
-fn faster_phase_two(
+fn phase_two(
     k: usize,
     mut top_k: Vec<Pattern>,
-    data: &[Vec<u128>],
-    mask: u128,
-    validation_data_option: Option<&(Vec<Vec<u128>>, u128)>, 
+    data: &Data,
+    validation_data_option: Option<&Data>, 
     min_difference: usize,
     block_size: usize,
-    blocks_count: usize,
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
 
@@ -160,7 +158,7 @@ fn faster_phase_two(
             hists.push(vec![(0, 0); block_size]);
         }
 
-        let mut it = data.iter().peekable();
+        let mut it = data.data.iter().peekable();
         
         while let Some(blocks) = it.next() {
             let is_last = it.peek().is_none();
@@ -174,8 +172,8 @@ fn faster_phase_two(
                     }
                     
                     bits[top_k[i].length] = b;
-                    hist[b].1 += multi_eval_count(top_k[i].bits_signs + 2_usize.pow(top_k[i].length as u32), &bits, blocks, mask, is_last) as usize;
-                    hist[b].0 += multi_eval_count(top_k[i].bits_signs, &bits, blocks, mask, is_last) as usize;
+                    hist[b].1 += multi_eval_count(top_k[i].bits_signs + 2_usize.pow(top_k[i].length as u32), &bits, blocks, data.mask, is_last) as usize;
+                    hist[b].0 += multi_eval_count(top_k[i].bits_signs, &bits, blocks, data.mask, is_last) as usize;
                 }
             })
         }
@@ -187,7 +185,7 @@ fn faster_phase_two(
                 validation_data_option,
                 &mut top_k[i],
                 &hists[i],
-                blocks_count,
+                data.num_of_blocks,
                 min_difference,
             );
 
@@ -217,20 +215,20 @@ fn faster_phase_two(
 }
 
 pub(crate) fn bottomup(
-    data: &Data,
+    data: &Vec<Vec<u8>>,
     validation_data_option: Option<&Vec<Vec<u8>>>,
     args: &Args,
 ) -> Vec<Pattern> {
     let mut start = Instant::now();
-    let (transformed_data, mask) = transform_data(data, args.block_size);
-    let top_k = phase_one(&transformed_data, mask, args.k, args.block_size, args.base_pattern_size);
+    let transformed_data = transform_data(data, args.block_size);
+    let top_k = phase_one(&transformed_data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
     let mut tr_val = None;
     if validation_data_option.is_some(){
         tr_val = Some(transform_data(validation_data_option.unwrap(), args.block_size));
     }
-    let r = faster_phase_two(args.k, top_k, &transformed_data, mask, tr_val.as_ref(), args.min_difference, args.block_size, data.len());
+    let r = phase_two(args.k, top_k, &transformed_data, tr_val.as_ref(), args.min_difference, args.block_size);
     println!("phase two {:.2?}", start.elapsed());
     r
 }

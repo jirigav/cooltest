@@ -2,8 +2,6 @@ use clap::Parser;
 use pyo3::prelude::*;
 use std::fs;
 
-pub(crate) type Data = Vec<Vec<u8>>;
-
 pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
 }
@@ -60,6 +58,12 @@ pub(crate) fn count_combinations(n: usize, r: usize) -> usize {
     }
 }
 
+pub(crate) struct Data{
+    pub(crate) data: Vec<Vec<u128>>,
+    pub(crate) mask: u128,
+    pub(crate) num_of_blocks: usize,
+}
+
 pub(crate) fn multi_eval(
     bits_signs: usize,
     bits: &[usize],
@@ -93,7 +97,7 @@ pub(crate) fn multi_eval_count(
 }
 
 
-fn load_data(path: &str, block_size: usize) -> Data {
+fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
     let len_of_block_in_bytes = block_size / 8;
     fs::read(path)
         .unwrap()
@@ -107,7 +111,7 @@ pub(crate) fn prepare_data(
     block_size: usize,
     halving: bool,
     validation: bool,
-) -> (Data, Option<Data>, Option<Data>) {
+) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>) {
     let mut training_data = load_data(data_source, block_size);
     let mut testing_data_option = None;
     let mut validation_data_option = None;
@@ -127,7 +131,7 @@ pub(crate) fn prepare_data(
 }
 
 /// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
-pub(crate) fn transform_data(data: &Data, block_size: usize) -> (Vec<Vec<u128>>, u128) {
+pub(crate) fn transform_data(data: &Vec<Vec<u8>>, block_size: usize) -> Data {
     let mut result = Vec::new();
 
     for blocks in data.chunks(128) {
@@ -143,7 +147,7 @@ pub(crate) fn transform_data(data: &Data, block_size: usize) -> (Vec<Vec<u128>>,
         }
         result.push(ints);
     }
-    (result, 2_u128.pow((data.len() % 128) as u32) - 1)
+    Data { data: result, mask: 2_u128.pow((data.len() % 128) as u32) - 1, num_of_blocks: data.len() }
 }
 
 pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {

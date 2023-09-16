@@ -3,7 +3,7 @@ mod common;
 mod distinguishers;
 
 use crate::bottomup::bottomup;
-use crate::common::{p_value, z_score, Args, Data};
+use crate::common::{p_value, z_score, Args};
 use crate::distinguishers::{
     best_multi_pattern, evaluate_distinguisher, Distinguisher, Histogram, Pattern,
 };
@@ -20,8 +20,8 @@ fn print_results(p_value: f64, z_score: f64) {
 fn results(
     mut final_patterns: Vec<Pattern>,
     start: Instant,
-    training_data: &Data,
-    testing_data_option: Option<&Data>,
+    training_data: &Vec<Vec<u8>>,
+    testing_data_option: Option<&Vec<Vec<u8>>>,
     patterns_combined: usize,
     hist: bool,
 ) {
@@ -49,8 +49,8 @@ fn results(
 
 fn hist_result(
     final_patterns: Vec<Pattern>,
-    training_data: &Data,
-    testing_data_option: Option<&Data>,
+    training_data: &Vec<Vec<u8>>,
+    testing_data_option: Option<&Vec<Vec<u8>>>,
 ) {
     println!("\n-- histograms --\n");
     let bits = final_patterns[0].bits.clone();

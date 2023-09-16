@@ -1,4 +1,4 @@
-use crate::common::{z_score, Data, transform_data, multi_eval, multi_eval_count};
+use crate::common::{z_score, transform_data, multi_eval, multi_eval_count};
 use core::fmt;
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -14,15 +14,15 @@ pub(crate) struct Histogram {
 }
 
 impl Histogram {
-    pub(crate) fn get_hist(bits: &Vec<usize>, data: &Data) -> Histogram {
+    pub(crate) fn get_hist(bits: &Vec<usize>, data: &Vec<Vec<u8>>) -> Histogram {
         let mut hist = vec![0; 2_usize.pow(bits.len() as u32)];
 
-        let (tr_data, mask) = transform_data(data, data[0].len() * 8);
-        let mut it = tr_data.into_iter().peekable();
+        let tr_data = transform_data(data, data[0].len() * 8);
+        let mut it = tr_data.data.into_iter().peekable();
         while let Some(blocks) = it.next(){
             let is_last = it.peek().is_none();
             hist.par_iter_mut().enumerate().for_each(|(i, h)| {
-                *h += multi_eval_count(i, bits, &blocks, mask, is_last) as usize;
+                *h += multi_eval_count(i, bits, &blocks, tr_data.mask, is_last) as usize;
             })
         }
 
@@ -53,15 +53,15 @@ impl Histogram {
         }
     }
 
-    pub(crate) fn evaluate(&self, data: &Data) -> usize {
+    pub(crate) fn evaluate(&self, data: &Vec<Vec<u8>>) -> usize {
         let mut hist2 = vec![0; 2_usize.pow(self.bits.len() as u32)];
 
-        let (tr_data, mask) = transform_data(data, data[0].len() * 8);
-        let mut it = tr_data.into_iter().peekable();
+        let tr_data = transform_data(data, data[0].len() * 8);
+        let mut it = tr_data.data.into_iter().peekable();
         while let Some(blocks) = it.next(){
             let is_last = it.peek().is_none();
             hist2.par_iter_mut().enumerate().for_each(|(i, h)| {
-                *h += multi_eval_count(i, &self.bits, &blocks, mask, is_last) as usize;
+                *h += multi_eval_count(i, &self.bits, &blocks, tr_data.mask, is_last) as usize;
             })
         }
         let mut count = 0;
@@ -252,14 +252,14 @@ impl Distinguisher for MultiPattern {
     }
 }
 
-pub(crate) fn best_multi_pattern(data: &Data, patterns: &[Pattern], n: usize) -> MultiPattern {
-    let (tr_data, mask) = transform_data(data, data[0].len()*8);
-    let len_m1 = tr_data.len() - 1;
+pub(crate) fn best_multi_pattern(data: &Vec<Vec<u8>>, patterns: &[Pattern], n: usize) -> MultiPattern {
+    let tr_data = transform_data(data, data[0].len()*8);
+    let len_m1 = tr_data.data.len() - 1;
     let mut best_mp: Option<MultiPattern> = None;
     let mut max_z = 0.0;
     for ps in patterns.iter().combinations(n) {
         let mut mp = MultiPattern::new(ps.iter().map(|x| x.to_owned().clone()).collect_vec());
-        mp.count = Some(tr_data.par_iter().enumerate().map(|(i, blocks)| mp.evaluate(blocks, mask, i == len_m1)).sum::<u32>() as usize);
+        mp.count = Some(tr_data.data.par_iter().enumerate().map(|(i, blocks)| mp.evaluate(blocks, tr_data.mask, i == len_m1)).sum::<u32>() as usize);
         let z = mp.z_score(data.len());
         if f64::abs(z) > f64::abs(max_z) {
             best_mp = Some(mp);
@@ -292,14 +292,14 @@ fn any_pairwise_disjoint_patterns(patterns: &[&Pattern]) -> bool {
 
 pub(crate) fn evaluate_distinguisher<P: Distinguisher + ?Sized>(
     distinguisher: &mut P,
-    data: &Data,
+    data: &Vec<Vec<u8>>,
 ) -> f64 {
-    let (tr_data, mask) = transform_data(data, data[0].len()*8);
-    let len_m1 = tr_data.len() - 1;
+    let tr_data = transform_data(data, data[0].len()*8);
+    let len_m1 = tr_data.data.len() - 1;
     distinguisher.forget_count();
     distinguisher.increase_count(
-        tr_data.iter().enumerate()
-            .map(|(i, blocks)| distinguisher.evaluate(blocks, mask, i == len_m1))
+        tr_data.data.iter().enumerate()
+            .map(|(i, blocks)| distinguisher.evaluate(blocks, tr_data.mask, i == len_m1))
             .sum::<u32>() as usize,
     );
     distinguisher.z_score(data.len())
@@ -372,11 +372,11 @@ mod tests {
                     patterns.push(p);
                 }
                 let mp = MultiPattern::new(patterns);
-                let (tr_data, mask) = transform_data(&(0..2_usize.pow(16)).map(|x| x.to_le_bytes().to_vec()).collect_vec(), 8);
-                let len_m1 = tr_data.len() - 1;
+                let tr_data = transform_data(&(0..2_usize.pow(16)).map(|x| x.to_le_bytes().to_vec()).collect_vec(), 8);
+                let len_m1 = tr_data.data.len() - 1;
 
-                let count: u32 = tr_data.iter().enumerate()
-                    .map(|(i, blocks)| mp.evaluate(&blocks, mask, len_m1 == i))
+                let count: u32 = tr_data.data.iter().enumerate()
+                    .map(|(i, blocks)| mp.evaluate(&blocks, tr_data.mask, len_m1 == i))
                     .sum();
 
                 assert_eq!(mp.probability, (count as f64) / 2.0_f64.powf(16.0));
