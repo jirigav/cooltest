@@ -16,9 +16,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - with:
-          toolchain: nightly
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+          toolchain: stable
           components: rustfmt, clippy
+
     - name: Build
       run: cargo build --verbose
     - name: Run tests
