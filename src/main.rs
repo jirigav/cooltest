@@ -91,7 +91,6 @@ fn run_bottomup(args: Args) {
     );
     println!("data loaded in: {:?}", s.elapsed());
 
-
     let start = Instant::now();
     let final_patterns = bottomup(&training_data, validation_data_option.as_ref(), &args);
     results(

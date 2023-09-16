@@ -148,12 +148,11 @@ pub(crate) fn transform_data(data: Vec<Vec<u8>>) -> Data {
         }
         result.push(ints);
     }
-    let mask: u128;
-    if data.len() % 128 == 0{
-        mask = u128::MAX;
+    let mask = if data.len() % 128 == 0 {
+        u128::MAX
     } else {
-        mask = 2_u128.pow((data.len() % 128) as u32) - 1;
-    }
+        2_u128.pow((data.len() % 128) as u32) - 1
+    };
     Data {
         data: result,
         mask,
