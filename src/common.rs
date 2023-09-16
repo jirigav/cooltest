@@ -52,16 +52,46 @@ pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
     ((block[byte_index] >> offset) & 1) == 1
 }
 
-pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
-    let mut result = 0;
+pub(crate) fn count_combinations(n: usize, r: usize) -> usize {
+    if r > n {
+        0
+    } else {
+        (1..=r.min(n - r)).fold(1, |acc, val| acc * (n - val + 1) / val)
+    }
+}
+
+pub(crate) fn multi_eval(
+    bits_signs: usize,
+    bits: &[usize],
+    tr_data: &[u128],
+    mask: u128,
+    is_last: bool,
+) -> u128 {
+    let mut result = u128::MAX;
 
     for (i, b) in bits.iter().enumerate() {
-        if bit_value_in_block(*b, block) {
-            result += 2_usize.pow(i as u32);
+        if ((bits_signs >> i) & 1) == 1 {
+            result &= tr_data[*b];
+        } else {
+            result &= tr_data[*b] ^ u128::MAX;
         }
+    }
+    if is_last {
+        result = result & mask;
     }
     result
 }
+
+pub(crate) fn multi_eval_count(
+    bits_signs: usize,
+    bits: &[usize],
+    tr_data: &[u128],
+    mask: u128,
+    is_last: bool,
+) -> u32 {
+    multi_eval(bits_signs, bits, tr_data, mask, is_last).count_ones()
+}
+
 
 fn load_data(path: &str, block_size: usize) -> Data {
     let len_of_block_in_bytes = block_size / 8;

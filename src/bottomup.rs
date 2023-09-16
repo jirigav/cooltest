@@ -1,46 +1,15 @@
 use std::time::Instant;
 
-use crate::common::{bit_value_in_block, transform_data, z_score, Args, Data};
+use crate::common::{transform_data, z_score, Args, Data, count_combinations, multi_eval_count};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
-
-fn count_combinations(n: usize, r: usize) -> usize {
-    if r > n {
-        0
-    } else {
-        (1..=r.min(n - r)).fold(1, |acc, val| acc * (n - val + 1) / val)
-    }
-}
-
-fn multi_eval(
-    bits_signs: usize,
-    bits: &[usize],
-    tr_data: &[u128],
-    mask: u128,
-    is_last: bool,
-) -> u128 {
-    let mut result = u128::MAX;
-
-    for (i, b) in bits.iter().enumerate() {
-        if ((bits_signs >> i) & 1) == 1 {
-            result &= tr_data[*b];
-        } else {
-            result &= tr_data[*b] ^ u128::MAX;
-        }
-    }
-    if is_last {
-        result & mask
-    } else {
-        result
-    }
-}
 
 fn phase_one(data: &[Vec<u128>], mask: u128, k: usize, block_size: usize, base_degree: usize) -> Vec<Pattern> {
     let m = (0..2_u8.pow(base_degree as u32))
         .map(|x| {
             (0..base_degree)
-                .map(|i| bit_value_in_block(i, &[x]))
+                .map(|i| ((x >> i)&1) == 1)
                 .collect_vec()
         })
         .collect_vec();
@@ -60,7 +29,7 @@ fn phase_one(data: &[Vec<u128>], mask: u128, k: usize, block_size: usize, base_d
             let bits_index = i / dises_per_bits;
             let bits_signs = i % dises_per_bits;
             *c +=
-                multi_eval(bits_signs, &bits[bits_index], blocks, mask, is_last).count_ones();
+                multi_eval_count(bits_signs, &bits[bits_index], blocks, mask, is_last);
         })
     }
 
@@ -114,7 +83,7 @@ fn improving(
             len_m1*128 + validation_data.1.count_ones() as usize,
             validation_data.0
                 .iter().enumerate()
-                .map(|(i, blocks)| multi_eval(pattern.bits_signs, &pattern.bits, blocks, validation_data.1, i == len_m1).count_ones())
+                .map(|(i, blocks)| multi_eval_count(pattern.bits_signs, &pattern.bits, blocks, validation_data.1, i == len_m1))
                 .sum::<u32>() as usize,
             2.0_f64.powf(-(pattern.length as f64)),
         ));
@@ -152,7 +121,7 @@ fn improving(
                     len_m1*128 + validation_data.1.count_ones() as usize,
                     validation_data.0
                         .iter().enumerate()
-                        .map(|(i, blocks)| multi_eval(new_pattern.bits_signs, &new_pattern.bits, blocks, validation_data.1, i == len_m1).count_ones())
+                        .map(|(i, blocks)| multi_eval_count(new_pattern.bits_signs, &new_pattern.bits, blocks, validation_data.1, i == len_m1))
                         .sum::<u32>() as usize,
                     2.0_f64.powf(-(new_pattern.length as f64)),
                 );
@@ -205,8 +174,8 @@ fn faster_phase_two(
                     }
                     
                     bits[top_k[i].length] = b;
-                    hist[b].1 += multi_eval(top_k[i].bits_signs + 2_usize.pow(top_k[i].length as u32), &bits, blocks, mask, is_last).count_ones() as usize;
-                    hist[b].0 += multi_eval(top_k[i].bits_signs, &bits, blocks, mask, is_last).count_ones() as usize;
+                    hist[b].1 += multi_eval_count(top_k[i].bits_signs + 2_usize.pow(top_k[i].length as u32), &bits, blocks, mask, is_last) as usize;
+                    hist[b].0 += multi_eval_count(top_k[i].bits_signs, &bits, blocks, mask, is_last) as usize;
                 }
             })
         }
