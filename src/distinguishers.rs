@@ -390,14 +390,10 @@ mod tests {
                 }
                 let mp = MultiPattern::new(patterns);
                 let tr_data = transform_data(
-                    Some(
-                        (0..2_usize.pow(16))
-                            .map(|x| x.to_le_bytes().to_vec())
-                            .collect_vec(),
-                    ),
-                    8,
-                )
-                .unwrap();
+                    (0..2_usize.pow(16))
+                        .map(|x| x.to_le_bytes().to_vec())
+                        .collect_vec(),
+                );
                 let len_m1 = tr_data.data.len() - 1;
 
                 let count: u32 = tr_data

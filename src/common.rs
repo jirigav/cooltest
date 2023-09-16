@@ -111,53 +111,48 @@ pub(crate) fn prepare_data(
     halving: bool,
     validation: bool,
 ) -> (Data, Option<Data>, Option<Data>) {
-    let mut training_data = load_data(data_source, block_size);
+    let data = load_data(data_source, block_size);
+    let training_data;
     let mut testing_data_option = None;
     let mut validation_data_option = None;
 
     if validation {
-        let (tr_data, testing_data) = training_data.split_at(training_data.len() / 3);
+        let (tr_data, testing_data) = data.split_at(data.len() / 3);
         let (val_data, test_data) = testing_data.split_at(testing_data.len() / 2);
-        testing_data_option = Some(test_data.to_vec());
-        validation_data_option = Some(val_data.to_vec());
-        training_data = tr_data.to_vec();
+        testing_data_option = Some(transform_data(test_data.to_vec()));
+        validation_data_option = Some(transform_data(val_data.to_vec()));
+        training_data = transform_data(tr_data.to_vec());
     } else if halving {
-        let (tr_data, testing_data) = training_data.split_at(training_data.len() / 2);
-        testing_data_option = Some(testing_data.to_vec());
-        training_data = tr_data.to_vec();
+        let (tr_data, testing_data) = data.split_at(data.len() / 2);
+        testing_data_option = Some(transform_data(testing_data.to_vec()));
+        training_data = transform_data(tr_data.to_vec());
+    } else {
+        training_data = transform_data(data);
     }
-    (
-        transform_data(Some(training_data), block_size).unwrap(),
-        transform_data(validation_data_option, block_size),
-        transform_data(testing_data_option, block_size),
-    )
+    (training_data, validation_data_option, testing_data_option)
 }
 
 /// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
-pub(crate) fn transform_data(option_data: Option<Vec<Vec<u8>>>, block_size: usize) -> Option<Data> {
-    if let Some(data) = option_data {
-        let mut result = Vec::new();
-
-        for blocks in data.chunks(128) {
-            let mut ints = vec![0_u128; block_size];
-            let mut v = 1;
-            for block in blocks {
-                for (i, int) in ints.iter_mut().enumerate().take(block_size) {
-                    if bit_value_in_block(i, block) {
-                        *int += v;
-                    }
+pub(crate) fn transform_data(data: Vec<Vec<u8>>) -> Data {
+    let mut result = Vec::new();
+    let block_size = data[0].len() * 8;
+    for blocks in data.chunks(128) {
+        let mut ints = vec![0_u128; block_size];
+        let mut v = 1;
+        for block in blocks {
+            for (i, int) in ints.iter_mut().enumerate().take(block_size) {
+                if bit_value_in_block(i, block) {
+                    *int += v;
                 }
-                v *= 2;
             }
-            result.push(ints);
+            v *= 2;
         }
-        Some(Data {
-            data: result,
-            mask: 2_u128.pow((data.len() % 128) as u32) - 1,
-            num_of_blocks: data.len(),
-        })
-    } else {
-        None
+        result.push(ints);
+    }
+    Data {
+        data: result,
+        mask: 2_u128.pow((data.len() % 128) as u32) - 1,
+        num_of_blocks: data.len(),
     }
 }
 
