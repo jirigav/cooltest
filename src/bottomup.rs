@@ -263,11 +263,12 @@ pub(crate) fn bottomup(
     r
 }
 
-
-fn phase_two_alt(
+#[allow(dead_code)]
+fn alt_phase_two(
     k: usize,
     mut top_k: Vec<Pattern>,
-    data: &[Vec<u8>],
+    data: &Data,
+    validation_data_option: Option<&Data>,
     imp_p_value: f64,
     block_size: usize,
     base_degree: usize
@@ -284,27 +285,43 @@ fn phase_two_alt(
             hists.push(vec![(0, 0); block_size]);
         }
 
-        for block in data {
-            for (i, pattern) in top_k.iter().enumerate() {
-                if pattern.evaluate(block) {
-                    for b in 0..block_size {
-                        if pattern.bits.contains(&b) {
-                            continue;
-                        }
-                        if bit_value_in_block(b, block) {
-                            hists[i][b].1 += 1;
-                        } else {
-                            hists[i][b].0 += 1;
-                        }
+        let mut it = data.data.iter().peekable();
+
+        while let Some(blocks) = it.next() {
+            let is_last = it.peek().is_none();
+
+            hists.par_iter_mut().enumerate().for_each(|(i, hist)| {
+                let mut bits = top_k[i].bits.clone();
+                bits.push(0);
+                for (b, h) in hist.iter_mut().enumerate() {
+                    if top_k[i].bits.contains(&b) {
+                        continue;
                     }
+
+                    bits[top_k[i].length] = b;
+                    h.1 += multi_eval_count(
+                        top_k[i].bits_signs + 2_usize.pow(top_k[i].length as u32),
+                        &bits,
+                        blocks,
+                        data.mask,
+                        is_last,
+                    ) as usize;
+                    h.0 += multi_eval_count(top_k[i].bits_signs, &bits, blocks, data.mask, is_last)
+                        as usize;
                 }
-            }
+            })
         }
 
         let mut new_top_k: Vec<Pattern> = Vec::with_capacity(top_k.len());
 
         for i in 0..hists.len() {
-            let mut imp = improving(&mut top_k[i], &hists[i], data.len(), imp_p_value);
+            let mut imp = improving(
+                validation_data_option,
+                &mut top_k[i],
+                &hists[i],
+                data.num_of_blocks,
+                imp_p_value,
+            );
 
             if imp.is_empty() {
                 final_patterns.push(top_k[i].clone());
