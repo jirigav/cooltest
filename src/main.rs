@@ -82,12 +82,15 @@ fn hist_result(
 }
 
 fn run_bottomup(args: Args) {
+    let s = Instant::now();
     let (training_data, validation_data_option, testing_data_option) = prepare_data(
         &args.data_source,
         args.block_size,
         args.halving,
         args.validation_and_testing_split,
     );
+    println!("data loaded in: {:?}", s.elapsed());
+
 
     let start = Instant::now();
     let final_patterns = bottomup(&training_data, validation_data_option.as_ref(), &args);

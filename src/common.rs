@@ -138,20 +138,25 @@ pub(crate) fn transform_data(data: Vec<Vec<u8>>) -> Data {
     let block_size = data[0].len() * 8;
     for blocks in data.chunks(128) {
         let mut ints = vec![0_u128; block_size];
-        let mut v = 1;
-        for block in blocks {
+
+        for (e, block) in blocks.iter().enumerate() {
             for (i, int) in ints.iter_mut().enumerate().take(block_size) {
                 if bit_value_in_block(i, block) {
-                    *int += v;
+                    *int += 1_u128 << e;
                 }
             }
-            v *= 2;
         }
         result.push(ints);
     }
+    let mask: u128;
+    if data.len() % 128 == 0{
+        mask = u128::MAX;
+    } else {
+        mask = 2_u128.pow((data.len() % 128) as u32) - 1;
+    }
     Data {
         data: result,
-        mask: 2_u128.pow((data.len() % 128) as u32) - 1,
+        mask,
         num_of_blocks: data.len(),
     }
 }
