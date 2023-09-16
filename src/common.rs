@@ -21,8 +21,8 @@ pub(crate) struct Args {
     pub(crate) k: usize,
 
     /// Minimal difference between expected and actual count of a given pattern in data.
-    #[arg(short, long, default_value_t = 100)]
-    pub(crate) min_difference: usize,
+    #[arg(short, long)]
+    pub(crate) min_difference: Option<usize>,
 
     /// Number of patterns combined into a multipattern.
     #[arg(short, long, default_value_t = 2)]
