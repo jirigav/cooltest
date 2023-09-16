@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::common::{transform_data, z_score, Args, count_combinations, multi_eval_count, Data};
+use crate::common::{z_score, Args, count_combinations, multi_eval_count, Data};
 use crate::distinguishers::{Distinguisher, Pattern};
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -215,20 +215,15 @@ fn phase_two(
 }
 
 pub(crate) fn bottomup(
-    data: &Vec<Vec<u8>>,
-    validation_data_option: Option<&Vec<Vec<u8>>>,
+    data: &Data,
+    validation_data_option: Option<&Data>,
     args: &Args,
 ) -> Vec<Pattern> {
     let mut start = Instant::now();
-    let transformed_data = transform_data(data, args.block_size);
-    let top_k = phase_one(&transformed_data, args.k, args.block_size, args.base_pattern_size);
+    let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let mut tr_val = None;
-    if validation_data_option.is_some(){
-        tr_val = Some(transform_data(validation_data_option.unwrap(), args.block_size));
-    }
-    let r = phase_two(args.k, top_k, &transformed_data, tr_val.as_ref(), args.min_difference, args.block_size);
+    let r = phase_two(args.k, top_k, data, validation_data_option, args.min_difference, args.block_size);
     println!("phase two {:.2?}", start.elapsed());
     r
 }
