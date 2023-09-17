@@ -260,17 +260,20 @@ impl Distinguisher for MultiPattern {
 }
 
 pub(crate) fn best_multi_pattern(data: &Data, patterns: &[Pattern], n: usize) -> MultiPattern {
-
     let mut best_mp: Option<MultiPattern> = None;
     let mut max_z = 0.0;
     let patterns_sets = patterns.iter().combinations(n).collect_vec();
 
-    let mut mps = patterns_sets.par_iter().map(|ps| MultiPattern::new(ps.iter().map(|x| x.to_owned().clone()).collect_vec())).collect::<Vec<_>>();
+    let mut mps = patterns_sets
+        .par_iter()
+        .map(|ps| MultiPattern::new(ps.iter().map(|x| x.to_owned().clone()).collect_vec()))
+        .collect::<Vec<_>>();
 
     let mut it = data.data.iter().peekable();
     while let Some(blocks) = it.next() {
         let is_last = it.peek().is_none();
-        mps.par_iter_mut().for_each(|mp| mp.increase_count(mp.evaluate(blocks, data.mask, is_last) as usize));
+        mps.par_iter_mut()
+            .for_each(|mp| mp.increase_count(mp.evaluate(blocks, data.mask, is_last) as usize));
     }
     for mut mp in mps {
         let z = mp.z_score(data.num_of_blocks);

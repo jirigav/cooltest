@@ -251,9 +251,9 @@ pub(crate) fn bottomup(
     let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
-    let min_diff = if let Some(m) = args.min_difference  {
+    let min_diff = if let Some(m) = args.min_difference {
         m
-    } else{
+    } else {
         (data.num_of_blocks as f64).powf(0.34) as usize
     };
     let r = phase_two(
