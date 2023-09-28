@@ -24,16 +24,15 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 2)]
     pub(crate) base_pattern_size: usize,
 
-    /// Option whether the input data should be halved into training and testing data.
-    #[arg(long)]
-    pub(crate) halving: bool,
-
     /// Option whether the input data should be divided into training, validation and testing data.
     #[arg(long, short)]
     pub(crate) validation_and_testing_split: bool,
 
     #[arg(long, short, default_value_t = 10)]
     pub(crate) max_bits: usize,
+
+    #[arg(long, short, default_value_t = 0.0)]
+    pub(crate) stop_p_value: f64,
 }
 
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
@@ -177,4 +176,26 @@ pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> 
             .unwrap();
         result
     })
+}
+
+pub(crate) fn p_value_to_z_score(p_value: f64) -> f64 {
+    if p_value == 0.0 {
+        return f64::MAX;
+    }
+    pyo3::prepare_freethreaded_python();
+    f64::abs(Python::with_gil(|py| {
+        let scipy = PyModule::import(py, "scipy").unwrap();
+        let result: f64 = scipy
+            .getattr("stats")
+            .unwrap()
+            .getattr("norm")
+            .unwrap()
+            .getattr("ppf")
+            .unwrap()
+            .call1((p_value,))
+            .unwrap()
+            .extract()
+            .unwrap();
+        result
+    }))
 }

@@ -12,15 +12,22 @@ fn run_bottomup(
     block_size: usize,
     k: usize,
     base_pattern_size: usize,
-    halving: bool,
     validation: bool,
     max_bits: usize,
+    stop_p_value: f64,
 ) {
     let (training_data, _validation_data_option, testing_data_option) =
-        prepare_data(data_source, block_size, halving, validation);
+        prepare_data(data_source, block_size, true, validation);
 
     let start = Instant::now();
-    let hist = bottomup(&training_data, block_size, k, base_pattern_size, max_bits);
+    let hist = bottomup(
+        &training_data,
+        block_size,
+        k,
+        base_pattern_size,
+        max_bits,
+        stop_p_value,
+    );
     println!("training finished in {:?}", start.elapsed());
     let testing_data = testing_data_option.unwrap();
 
@@ -52,8 +59,8 @@ fn main() {
         args.block_size,
         args.k,
         args.base_pattern_size,
-        args.halving,
         args.validation_and_testing_split,
         args.max_bits,
+        args.stop_p_value,
     )
 }

@@ -4,7 +4,8 @@ use itertools::Itertools;
 use rayon::prelude::*;
 
 use crate::common::{
-    bits_block_eval, count_combinations, multi_eval_count, transform_data, z_score, Data,
+    bits_block_eval, count_combinations, multi_eval_count, p_value_to_z_score, transform_data,
+    z_score, Data,
 };
 
 #[derive(Debug, Clone)]
@@ -125,6 +126,7 @@ fn phase_two(
     block_size: usize,
     mut top_k: Vec<Histogram>,
     max_bits: usize,
+    stop_z: f64,
 ) -> Vec<Histogram> {
     let mut final_bins: Vec<Histogram> = Vec::new();
     let mut length = top_k[0].bits.len();
@@ -165,6 +167,10 @@ fn phase_two(
             }
         }
         top_k = new_top;
+        if top_k.iter().any(|h| f64::abs(h.z_score) > stop_z) {
+            println!("stop z: {stop_z}");
+            break;
+        }
     }
     final_bins.extend(top_k);
     final_bins
@@ -176,12 +182,19 @@ pub(crate) fn bottomup(
     k: usize,
     base_degree: usize,
     max_bits: usize,
+    stop_p_value: f64,
 ) -> Histogram {
     let mut start = Instant::now();
     let top_k = phase_one(&transform_data(data), block_size, base_degree, k);
     println!("Phase one in {:?}", start.elapsed());
     start = Instant::now();
-    let mut r = phase_two(data, block_size, top_k, max_bits);
+    let mut r = phase_two(
+        data,
+        block_size,
+        top_k,
+        max_bits,
+        p_value_to_z_score(stop_p_value),
+    );
     println!("Phase two in {:?}", start.elapsed());
     r.sort_unstable_by(|a, b| {
         f64::abs(b.z_score)
