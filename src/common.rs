@@ -17,7 +17,7 @@ pub(crate) struct Args {
     pub(crate) block_size: usize,
 
     /// Number of explored pattern branches.
-    #[arg(short, long, default_value_t = 10)]
+    #[arg(short, long, default_value_t = 100)]
     pub(crate) k: usize,
 
     /// Minimal difference between expected and actual count of a given pattern in data.
@@ -31,10 +31,6 @@ pub(crate) struct Args {
     /// Length of patterns evaluated in the first phase.
     #[arg(short, long, default_value_t = 2)]
     pub(crate) base_pattern_size: usize,
-
-    /// Option whether the input data should be halved into training and testing data.
-    #[arg(long)]
-    pub(crate) halving: bool,
 
     /// Option whether the input data should be divided into training, validation and testing data.
     #[arg(long, short)]

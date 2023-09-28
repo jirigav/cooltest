@@ -21,7 +21,7 @@ fn results(
     mut final_patterns: Vec<Pattern>,
     start: Instant,
     training_data: &Data,
-    testing_data_option: Option<&Data>,
+    testing_data: &Data,
     patterns_combined: usize,
     hist: bool,
 ) {
@@ -34,10 +34,12 @@ fn results(
 
     println!("trained in {:.2?}", start.elapsed());
 
-    println!("z-score: {}", best_mp.z_score.unwrap());
+    println!("training z-score: {}", best_mp.z_score.unwrap());
     println!("best multi-pattern: {best_mp:?}");
 
-    if let Some(testing_data) = testing_data_option {
+    if hist {
+        hist_result(final_patterns, training_data, testing_data);
+    } else {
         let z_score = evaluate_distinguisher(&mut best_mp, testing_data);
         let p_value = p_value(
             best_mp.get_count(),
@@ -46,17 +48,9 @@ fn results(
         );
         print_results(p_value, z_score);
     }
-    if hist {
-        hist_result(final_patterns, training_data, testing_data_option);
-    }
 }
 
-fn hist_result(
-    final_patterns: Vec<Pattern>,
-    training_data: &Data,
-    testing_data_option: Option<&Data>,
-) {
-    println!("\n-- histograms --\n");
+fn hist_result(final_patterns: Vec<Pattern>, training_data: &Data, testing_data: &Data) {
     let bits = final_patterns[0].bits.clone();
 
     println!("number of bits: {}", bits.len());
@@ -68,17 +62,15 @@ fn hist_result(
 
     let hist = Histogram::get_hist(&bits, training_data);
 
-    println!("z-score: {}", hist.z_score);
+    println!("training z-score: {}", hist.z_score);
 
-    if let Some(testing_data) = testing_data_option {
-        let count = hist.evaluate(testing_data);
-        let prob = 2.0_f64.powf(-(hist.bits.len() as f64)) * (hist.best_division as f64);
+    let count = hist.evaluate(testing_data);
+    let prob = 2.0_f64.powf(-(hist.bits.len() as f64)) * (hist.best_division as f64);
 
-        let z = z_score(testing_data.num_of_blocks, count, prob);
-        let p_val = p_value(count, testing_data.num_of_blocks, prob);
+    let z = z_score(testing_data.num_of_blocks, count, prob);
+    let p_val = p_value(count, testing_data.num_of_blocks, prob);
 
-        print_results(p_val, z);
-    }
+    print_results(p_val, z);
 }
 
 fn run_bottomup(args: Args) {
@@ -86,7 +78,7 @@ fn run_bottomup(args: Args) {
     let (training_data, validation_data_option, testing_data_option) = prepare_data(
         &args.data_source,
         args.block_size,
-        args.halving,
+        true,
         args.validation_and_testing_split,
     );
     println!("data loaded in: {:?}", s.elapsed());
@@ -97,7 +89,7 @@ fn run_bottomup(args: Args) {
         final_patterns.clone(),
         start,
         &training_data,
-        testing_data_option.as_ref(),
+        &testing_data_option.unwrap(),
         args.patterns_combined,
         args.hist,
     );
