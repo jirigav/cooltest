@@ -39,6 +39,10 @@ pub(crate) struct Args {
     /// Option whether histogram should be used as an alternative evaluation method.
     #[arg(long)]
     pub(crate) hist: bool,
+
+    /// Option whether histogram should be used as an alternative evaluation method.
+    #[arg(long, short)]
+    pub(crate) config: bool,
 }
 
 pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
