@@ -15,6 +15,7 @@ pub(crate) struct Histogram {
     pub(crate) sorted_indices: Vec<usize>,
     pub(crate) best_division: usize,
     pub(crate) z_score: f64,
+    pub(crate) changes: Vec<f64>,
 }
 
 impl Histogram {
@@ -48,6 +49,7 @@ impl Histogram {
             sorted_indices: indices,
             best_division: best_i,
             z_score: max_z,
+            changes: Vec::new(),
         }
     }
 
@@ -76,6 +78,7 @@ impl Histogram {
             sorted_indices: indices,
             best_division: best_i,
             z_score: max_z,
+            changes: Vec::new(),
         }
     }
 
@@ -89,6 +92,16 @@ impl Histogram {
             count += hist2[self.sorted_indices[k]];
         }
         count
+    }
+
+    pub(crate) fn change(&self) -> f64 {
+        let half_len = self._bins.len() / 2;
+        let mut r = 0.0;
+        for i in 0..half_len {
+            let exp = (self._bins[i] + self._bins[i + half_len]) as f64 / 2.0;
+            r += ((self._bins[i] as f64) - exp).powf(2.0);
+        }
+        r / (half_len as f64)
     }
 }
 
@@ -144,14 +157,15 @@ fn phase_two(
                     }
                     let mut new_bits = hist.bits.clone();
                     new_bits.push(bit);
-                    let new_hist = Histogram::get_hist(&new_bits.to_vec(), data);
-                    if new_hist.z_score < hist.z_score {
+                    let mut new_hist = Histogram::get_hist(&new_bits.to_vec(), data);
+                    if new_hist.z_score < hist.z_score || new_hist.change() < 100.0 {
                         continue;
                     }
 
                     if best_imp.is_none()
                         || f64::abs(best_imp.as_ref().unwrap().z_score) < f64::abs(new_hist.z_score)
                     {
+                        new_hist.changes = hist.changes.clone();
                         best_imp = Some(new_hist);
                     }
                 }
@@ -160,7 +174,8 @@ fn phase_two(
             .enumerate()
             .collect::<Vec<_>>()
         {
-            if let Some(imp) = hist {
+            if let Some(mut imp) = hist {
+                imp.changes.push(imp.change());
                 new_top.push(imp);
             } else {
                 final_bins.push(top_k[i].clone());
