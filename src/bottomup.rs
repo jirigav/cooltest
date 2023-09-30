@@ -1,17 +1,18 @@
-use std::time::Instant;
+use std::{time::Instant, sync::Arc};
 
 use itertools::Itertools;
 use rayon::prelude::*;
 
 use crate::common::{
     bits_block_eval, count_combinations, multi_eval_count, p_value_to_z_score, transform_data,
-    z_score, Data,
+    z_score, Data, bit_value_in_block,
 };
 
 #[derive(Debug, Clone)]
 pub(crate) struct Histogram {
     pub(crate) bits: Vec<usize>,
     pub(crate) _bins: Vec<usize>,
+    pub(crate) data_bins: Vec<Vec<Arc<[u8]>>>,
     pub(crate) sorted_indices: Vec<usize>,
     pub(crate) best_division: usize,
     pub(crate) z_score: f64,
@@ -46,6 +47,7 @@ impl Histogram {
         Histogram {
             bits: bits.to_vec(),
             _bins: hist,
+            data_bins: vec![Vec::new(); 2_usize.pow(bits.len() as u32)],
             sorted_indices: indices,
             best_division: best_i,
             z_score: max_z,
@@ -75,6 +77,7 @@ impl Histogram {
         Histogram {
             bits: bits.to_vec(),
             _bins: bins,
+            data_bins: vec![Vec::new(); 2_usize.pow(bits.len() as u32)],
             sorted_indices: indices,
             best_division: best_i,
             z_score: max_z,
@@ -102,6 +105,47 @@ impl Histogram {
             r += ((self._bins[i] as f64) - exp).powf(2.0);
         }
         r / (half_len as f64)
+    }
+
+    pub(crate) fn split_bins(&self, bit: usize) -> Histogram{
+        let mut bits = self.bits.clone();
+        bits.push(bit);
+        let mut data_bins1 = vec![Vec::new(); self.data_bins.len()];
+        let mut data_bins2 = data_bins1.clone();
+        for (i, data_bin) in self.data_bins.iter().enumerate(){
+            for block in data_bin{
+                if bit_value_in_block(bit, block) {
+                    data_bins2[i].push(block.to_owned());
+                } else{
+                    data_bins1[i].push(block.to_owned());
+                }
+            }
+        }
+
+        data_bins1.append(&mut data_bins2);
+        let bins = data_bins1.iter().map(|x| x.len()).collect_vec();
+
+        let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
+        indices.sort_by(|a, b| bins[*b].cmp(&bins[*a]));
+
+        let mut max_z = 0.0;
+        let mut best_i = 0;
+        let prob = 2.0_f64.powf(-(bits.len() as f64));
+
+        for i in 1..2_usize.pow(bits.len() as u32) {
+            let mut count = 0;
+            for k in 0..i {
+                count += bins[indices[k]];
+            }
+            let z = z_score(bins.iter().sum(), count, prob * (i as f64));
+            if z > max_z {
+                max_z = z;
+                best_i = i;
+            }
+        }
+
+
+        Histogram { bits, _bins: bins, data_bins: data_bins1, sorted_indices: indices, best_division: best_i, z_score: max_z, changes: Vec::new() }
     }
 }
 
@@ -158,6 +202,71 @@ fn phase_two(
                     let mut new_bits = hist.bits.clone();
                     new_bits.push(bit);
                     let mut new_hist = Histogram::get_hist(&new_bits.to_vec(), data);
+                    if new_hist.z_score < hist.z_score || new_hist.change() < 0.0 {
+                        continue;
+                    }
+
+                    if best_imp.is_none()
+                        || f64::abs(best_imp.as_ref().unwrap().z_score) < f64::abs(new_hist.z_score)
+                    {
+                        new_hist.changes = hist.changes.clone();
+                        best_imp = Some(new_hist);
+                    }
+                }
+                best_imp
+            })
+            .enumerate()
+            .collect::<Vec<_>>()
+        {
+            if let Some(mut imp) = hist {
+                imp.changes.push(imp.change());
+                new_top.push(imp);
+            } else {
+                final_bins.push(top_k[i].clone());
+            }
+        }
+        top_k = new_top;
+        if top_k.iter().any(|h| f64::abs(h.z_score) > stop_z) {
+            println!("stop z: {stop_z}");
+            break;
+        }
+    }
+    final_bins.extend(top_k);
+    final_bins
+}
+
+
+fn prepare_alt_phase(top_k: &mut Vec<Histogram>, data: &Vec<Vec<u8>>){
+    for block in data{
+        let arc_block: Arc<[u8]> = block.to_owned().into();
+        for h in top_k.iter_mut(){
+            let i = bits_block_eval(&h.bits, &arc_block);
+            h.data_bins[i].push(arc_block.clone());
+        }
+    }
+}
+fn alt_phase_two(
+    block_size: usize,
+    mut top_k: Vec<Histogram>,
+    max_bits: usize,
+    stop_z: f64,
+) -> Vec<Histogram> {
+    let mut final_bins: Vec<Histogram> = Vec::new();
+    let mut length = top_k[0].bits.len();
+    while !top_k.is_empty() && length < max_bits {
+        length += 1;
+        let mut new_top: Vec<Histogram> = Vec::new();
+
+        for (i, hist) in top_k
+            .par_iter()
+            .map(|hist| {
+                let mut best_imp: Option<Histogram> = None;
+                for bit in 0..block_size {
+                    if hist.bits.contains(&bit) {
+                        continue;
+                    }
+
+                    let mut new_hist = hist.split_bins(bit);
                     if new_hist.z_score < hist.z_score || new_hist.change() < 100.0 {
                         continue;
                     }
@@ -200,16 +309,22 @@ pub(crate) fn bottomup(
     stop_p_value: f64,
 ) -> Histogram {
     let mut start = Instant::now();
-    let top_k = phase_one(&transform_data(data), block_size, base_degree, k);
+    let mut top_k = phase_one(&transform_data(data), block_size, base_degree, k);
     println!("Phase one in {:?}", start.elapsed());
     start = Instant::now();
-    let mut r = phase_two(
+    /*let mut r = phase_two(
         data,
         block_size,
         top_k,
         max_bits,
         p_value_to_z_score(stop_p_value),
-    );
+    );*/
+
+    prepare_alt_phase(&mut top_k, data);
+    println!("Prepared in {:?}", start.elapsed());
+    start = Instant::now();
+    let mut r = alt_phase_two(block_size, top_k, max_bits, p_value_to_z_score(stop_p_value));
+
     println!("Phase two in {:?}", start.elapsed());
     r.sort_unstable_by(|a, b| {
         f64::abs(b.z_score)
