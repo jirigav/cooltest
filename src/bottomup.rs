@@ -140,6 +140,7 @@ fn phase_two(
     mut top_k: Vec<Histogram>,
     max_bits: usize,
     stop_z: f64,
+    stop_change: f64,
 ) -> Vec<Histogram> {
     let mut final_bins: Vec<Histogram> = Vec::new();
     let mut length = top_k[0].bits.len();
@@ -158,7 +159,7 @@ fn phase_two(
                     let mut new_bits = hist.bits.clone();
                     new_bits.push(bit);
                     let mut new_hist = Histogram::get_hist(&new_bits.to_vec(), data);
-                    if new_hist.z_score < hist.z_score || new_hist.change() < 100.0 {
+                    if new_hist.z_score < hist.z_score || new_hist.change() < stop_change {
                         continue;
                     }
 
@@ -198,6 +199,7 @@ pub(crate) fn bottomup(
     base_degree: usize,
     max_bits: usize,
     stop_p_value: f64,
+    stop_change: f64,
 ) -> Histogram {
     let mut start = Instant::now();
     let top_k = phase_one(&transform_data(data), block_size, base_degree, k);
@@ -209,6 +211,7 @@ pub(crate) fn bottomup(
         top_k,
         max_bits,
         p_value_to_z_score(stop_p_value),
+        stop_change,
     );
     println!("Phase two in {:?}", start.elapsed());
     r.sort_unstable_by(|a, b| {

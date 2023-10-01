@@ -33,6 +33,9 @@ pub(crate) struct Args {
 
     #[arg(long, short, default_value_t = 0.0)]
     pub(crate) stop_p_value: f64,
+
+    #[arg(long, short, default_value_t = 100.0)]
+    pub(crate) stop_change: f64,
 }
 
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {

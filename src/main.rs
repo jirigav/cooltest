@@ -7,26 +7,23 @@ use clap::Parser;
 use common::prepare_data;
 use std::time::Instant;
 
-fn run_bottomup(
-    data_source: &str,
-    block_size: usize,
-    k: usize,
-    base_pattern_size: usize,
-    validation: bool,
-    max_bits: usize,
-    stop_p_value: f64,
-) {
-    let (training_data, _validation_data_option, testing_data_option) =
-        prepare_data(data_source, block_size, true, validation);
+fn run_bottomup(args: Args) {
+    let (training_data, _validation_data_option, testing_data_option) = prepare_data(
+        &args.data_source,
+        args.block_size,
+        true,
+        args.validation_and_testing_split,
+    );
 
     let start = Instant::now();
     let hist = bottomup(
         &training_data,
-        block_size,
-        k,
-        base_pattern_size,
-        max_bits,
-        stop_p_value,
+        args.block_size,
+        args.k,
+        args.base_pattern_size,
+        args.max_bits,
+        args.stop_p_value,
+        args.stop_change,
     );
     println!("training finished in {:?}", start.elapsed());
     let testing_data = testing_data_option.unwrap();
@@ -54,13 +51,5 @@ fn main() {
     let args = Args::parse();
     println!("\n{args:?}\n");
 
-    run_bottomup(
-        &args.data_source,
-        args.block_size,
-        args.k,
-        args.base_pattern_size,
-        args.validation_and_testing_split,
-        args.max_bits,
-        args.stop_p_value,
-    )
+    run_bottomup(args)
 }
