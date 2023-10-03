@@ -8,7 +8,7 @@ use crate::common::{
     z_score, Data,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Histogram {
     pub(crate) bits: Vec<usize>,
     pub(crate) _bins: Vec<usize>,
@@ -101,7 +101,13 @@ impl Histogram {
             let exp = (self._bins[i] + self._bins[i + half_len]) as f64 / 2.0;
             r += ((self._bins[i] as f64) - exp).powf(2.0);
         }
-        r / (half_len as f64)
+        r
+    }
+}
+
+impl std::fmt::Debug for Histogram{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Histogram").field("bits", &self.bits).field("best_division", &self.best_division).field("z_score", &self.z_score).field("changes", &self.changes).finish()
     }
 }
 
