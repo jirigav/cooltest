@@ -166,6 +166,7 @@ fn phase_two(
     validation_data_option: Option<&Data>,
     min_difference: usize,
     block_size: usize,
+    max_bits: Option<usize>,
 ) -> Vec<Pattern> {
     let mut final_patterns: Vec<Pattern> = Vec::with_capacity(k);
 
@@ -173,7 +174,9 @@ fn phase_two(
 
     while !top_k.is_empty() && pattern_len < block_size {
         pattern_len += 1;
-
+        if max_bits.is_some() && pattern_len > max_bits.unwrap() {
+            break;
+        }
         let mut hists: Vec<Vec<(usize, usize)>> = Vec::with_capacity(top_k.len());
         for _ in 0..top_k.len() {
             hists.push(vec![(0, 0); block_size]);
@@ -239,6 +242,12 @@ fn phase_two(
         top_k = new_top_k;
     }
 
+    top_k.iter_mut().for_each(|p| {
+        p.z_score(data.num_of_blocks);
+    });
+
+    final_patterns.append(&mut top_k);
+
     final_patterns
 }
 
@@ -258,6 +267,7 @@ pub(crate) fn bottomup(
         validation_data_option,
         args.min_difference,
         args.block_size,
+        args.max_bits,
     );
     println!("phase two {:.2?}", start.elapsed());
     r

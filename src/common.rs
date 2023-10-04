@@ -28,6 +28,10 @@ pub(crate) struct Args {
     #[arg(long, default_value_t = 50)]
     pub(crate) top_n: usize,
 
+    /// Maximal number of bits (variables) used in distinguishers.
+    #[arg(long)]
+    pub(crate) max_bits: Option<usize>,
+
     /// Number of patterns combined into a multipattern.
     #[arg(short, long, default_value_t = 2)]
     pub(crate) patterns_combined: usize,
