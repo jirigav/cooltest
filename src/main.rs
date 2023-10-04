@@ -26,6 +26,7 @@ fn results(
     training_data: &Data,
     testing_data: &Data,
     patterns_combined: usize,
+    top_n: usize,
     hist: bool,
 ) -> (f64, f64) {
     final_patterns.sort_by(|a, b| {
@@ -37,7 +38,7 @@ fn results(
     if hist {
         hist_result(final_patterns, training_data, testing_data, start)
     } else {
-        let mut best_mp = best_multi_pattern(training_data, &final_patterns, patterns_combined);
+        let mut best_mp = best_multi_pattern(training_data, &final_patterns.into_iter().take(top_n).collect_vec(), patterns_combined);
 
         println!("trained in {:.2?}", start.elapsed());
 
@@ -102,6 +103,7 @@ fn run_bottomup(args: Args) -> (f64, f64) {
         &training_data,
         &testing_data_option.unwrap(),
         args.patterns_combined,
+        args.top_n,
         args.hist,
     )
 }
