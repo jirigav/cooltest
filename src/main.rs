@@ -112,10 +112,11 @@ fn parse_args(s: Vec<&str>) -> Args {
         block_size: s[1].trim().parse().unwrap(),
         k: s[2].trim().parse().unwrap(),
         min_difference: s[3].trim().parse().unwrap(),
-        patterns_combined: s[4].trim().parse().unwrap(),
-        base_pattern_size: s[5].trim().parse().unwrap(),
-        validation_and_testing_split: s[6].trim().parse().unwrap(),
-        hist: s[7].trim().parse().unwrap(),
+        top_n: s[4].trim().parse().unwrap(),
+        patterns_combined: s[5].trim().parse().unwrap(),
+        base_pattern_size: s[6].trim().parse().unwrap(),
+        validation_and_testing_split: s[7].trim().parse().unwrap(),
+        hist: s[8].trim().parse().unwrap(),
         config: false,
     }
 }
