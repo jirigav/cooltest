@@ -38,7 +38,11 @@ fn results(
     if hist {
         hist_result(final_patterns, training_data, testing_data, start)
     } else {
-        let mut best_mp = best_multi_pattern(training_data, &final_patterns.into_iter().take(top_n).collect_vec(), patterns_combined);
+        let mut best_mp = best_multi_pattern(
+            training_data,
+            &final_patterns.into_iter().take(top_n).collect_vec(),
+            patterns_combined,
+        );
 
         println!("trained in {:.2?}", start.elapsed());
 

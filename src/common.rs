@@ -24,7 +24,7 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 100)]
     pub(crate) min_difference: usize,
 
-    /// Number of patterns combined into a multipattern.
+    /// Number of patterns tested in combinations for multipattern.
     #[arg(long, default_value_t = 50)]
     pub(crate) top_n: usize,
 
