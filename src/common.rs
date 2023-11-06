@@ -1,4 +1,5 @@
 use clap::Parser;
+use itertools::Itertools;
 use pyo3::prelude::*;
 use std::fs;
 
@@ -15,6 +16,10 @@ pub(crate) struct Args {
     /// Length of block of data.
     #[arg(short, long, default_value_t = 128)]
     pub(crate) block_size: usize,
+
+    /// If the value is greater than 1, CoolTest looks for distinguisher on block size that is a multiple of block_size and utilizes all such consecutive tuples.
+    #[arg(long, default_value_t = 1)]
+    pub(crate) block_size_multiple: usize,
 
     /// Number of explored pattern branches.
     #[arg(short, long, default_value_t = 100)]
@@ -104,22 +109,28 @@ pub(crate) fn multi_eval_count(
     multi_eval(bits_signs, bits, tr_data, mask, is_last).count_ones()
 }
 
-fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
-    let len_of_block_in_bytes = block_size / 8;
-    fs::read(path)
+fn load_data(path: &str, block_size: usize, block_size_multiple: usize) -> Vec<Vec<u8>> {
+    let len_of_block_in_bytes = (block_size * block_size_multiple) / 8;
+    let mut data: Vec<_> = fs::read(path)
         .unwrap()
         .chunks(len_of_block_in_bytes)
         .map(<[u8]>::to_vec)
-        .collect()
+        .collect();
+    if data[data.len() - 1].len() != len_of_block_in_bytes {
+        println!("Data are not aligned with block size, dropping last block!");
+        data.pop();
+    }
+    data
 }
 
 pub(crate) fn prepare_data(
     data_source: &str,
     block_size: usize,
+    block_size_multiple: usize,
     halving: bool,
     validation: bool,
 ) -> (Data, Option<Data>, Option<Data>) {
-    let data = load_data(data_source, block_size);
+    let data = load_data(data_source, block_size, block_size_multiple);
     let training_data;
     let mut testing_data_option = None;
     let mut validation_data_option = None;
@@ -129,15 +140,37 @@ pub(crate) fn prepare_data(
         let (val_data, test_data) = testing_data.split_at(testing_data.len() / 2);
         testing_data_option = Some(transform_data(test_data.to_vec()));
         validation_data_option = Some(transform_data(val_data.to_vec()));
-        training_data = transform_data(tr_data.to_vec());
+        training_data = transform_training_data(tr_data.to_vec(), block_size, block_size_multiple);
     } else if halving {
         let (tr_data, testing_data) = data.split_at(data.len() / 2);
         testing_data_option = Some(transform_data(testing_data.to_vec()));
-        training_data = transform_data(tr_data.to_vec());
+        training_data = transform_training_data(tr_data.to_vec(), block_size, block_size_multiple);
     } else {
-        training_data = transform_data(data);
+        training_data = transform_training_data(data, block_size, block_size_multiple);
     }
+    println!("tr {}, te {}", training_data.data.len(), testing_data_option.as_ref().unwrap().data.len());
     (training_data, validation_data_option, testing_data_option)
+}
+
+fn transform_training_data(data: Vec<Vec<u8>>, block_size: usize, block_size_multiple: usize) -> Data {
+    if block_size_multiple == 1{
+        return transform_data(data);
+    }
+
+    let data_flattened: Vec<Vec<u8>> = data.into_iter().flat_map(|x| x).collect_vec().chunks(block_size/8).map(<[u8]>::to_vec).collect();
+
+    let mut data_duplicated = Vec::new();
+
+    for i in 0..(data_flattened.len() - block_size_multiple + 1) {
+        let mut block: Vec<u8> = Vec::new();
+        for j in 0..block_size_multiple {
+            block.append(&mut data_flattened[i + j].clone());
+        }
+        data_duplicated.push(block);
+        
+    }
+
+    transform_data(data_duplicated)
 }
 
 /// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.

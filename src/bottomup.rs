@@ -257,7 +257,7 @@ pub(crate) fn bottomup(
     args: &Args,
 ) -> Vec<Pattern> {
     let mut start = Instant::now();
-    let top_k = phase_one(data, args.k, args.block_size, args.base_pattern_size);
+    let top_k = phase_one(data, args.k, args.block_size * args.block_size_multiple, args.base_pattern_size);
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
     let r = phase_two(
@@ -266,7 +266,7 @@ pub(crate) fn bottomup(
         data,
         validation_data_option,
         args.min_difference,
-        args.block_size,
+        args.block_size * args.block_size_multiple,
         args.max_bits,
     );
     println!("phase two {:.2?}", start.elapsed());

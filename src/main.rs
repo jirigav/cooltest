@@ -94,6 +94,7 @@ fn run_bottomup(args: Args) -> (f64, f64) {
     let (training_data, validation_data_option, testing_data_option) = prepare_data(
         &args.data_source,
         args.block_size,
+        args.block_size_multiple,
         true,
         args.validation_and_testing_split,
     );
@@ -116,14 +117,15 @@ fn parse_args(s: Vec<&str>) -> Args {
     Args {
         data_source: s[0].to_string(),
         block_size: s[1].trim().parse().unwrap(),
-        k: s[2].trim().parse().unwrap(),
-        min_difference: s[3].trim().parse().unwrap(),
-        top_n: s[4].trim().parse().unwrap(),
-        max_bits: Some(s[5].trim().parse().unwrap()),
-        patterns_combined: s[6].trim().parse().unwrap(),
-        base_pattern_size: s[7].trim().parse().unwrap(),
-        validation_and_testing_split: s[8].trim().parse().unwrap(),
-        hist: s[9].trim().parse().unwrap(),
+        block_size_multiple: s[2].trim().parse().unwrap(),
+        k: s[3].trim().parse().unwrap(),
+        min_difference: s[4].trim().parse().unwrap(),
+        top_n: s[5].trim().parse().unwrap(),
+        max_bits: Some(s[6].trim().parse().unwrap()),
+        patterns_combined: s[7].trim().parse().unwrap(),
+        base_pattern_size: s[8].trim().parse().unwrap(),
+        validation_and_testing_split: s[9].trim().parse().unwrap(),
+        hist: s[10].trim().parse().unwrap(),
         config: false,
     }
 }
