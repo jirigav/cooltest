@@ -148,16 +148,30 @@ pub(crate) fn prepare_data(
     } else {
         training_data = transform_training_data(data, block_size, block_size_multiple);
     }
-    println!("tr {}, te {}", training_data.data.len(), testing_data_option.as_ref().unwrap().data.len());
+    println!(
+        "tr {}, te {}",
+        training_data.data.len(),
+        testing_data_option.as_ref().unwrap().data.len()
+    );
     (training_data, validation_data_option, testing_data_option)
 }
 
-fn transform_training_data(data: Vec<Vec<u8>>, block_size: usize, block_size_multiple: usize) -> Data {
-    if block_size_multiple == 1{
+fn transform_training_data(
+    data: Vec<Vec<u8>>,
+    block_size: usize,
+    block_size_multiple: usize,
+) -> Data {
+    if block_size_multiple == 1 {
         return transform_data(data);
     }
 
-    let data_flattened: Vec<Vec<u8>> = data.into_iter().flat_map(|x| x).collect_vec().chunks(block_size/8).map(<[u8]>::to_vec).collect();
+    let data_flattened: Vec<Vec<u8>> = data
+        .into_iter()
+        .flatten()
+        .collect_vec()
+        .chunks(block_size / 8)
+        .map(<[u8]>::to_vec)
+        .collect();
 
     let mut data_duplicated = Vec::new();
 
@@ -167,7 +181,6 @@ fn transform_training_data(data: Vec<Vec<u8>>, block_size: usize, block_size_mul
             block.append(&mut data_flattened[i + j].clone());
         }
         data_duplicated.push(block);
-        
     }
 
     transform_data(data_duplicated)
