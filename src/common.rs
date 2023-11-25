@@ -10,18 +10,18 @@ pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
 #[derive(Parser, Debug)]
 #[command(version)]
 pub(crate) struct Args {
-    /// Path of file with input data.
+    /// Path to file with input data.
     pub(crate) data_source: String,
 
-    /// Length of block of data.
+    /// Block size in bits.
     #[arg(short, long, default_value_t = 128)]
-    pub(crate) block_size: usize,
+    pub(crate) block: usize,
 
-    /// If the value is greater than 1, CoolTest looks for distinguisher on block size that is a multiple of block_size and utilizes all such consecutive tuples.
+    /// If the value is greater than 1, CoolTest looks for distinguisher on block size that is a multiple of 'block' and utilizes all such tuples of consecutive blocks.
     #[arg(long, default_value_t = 1)]
     pub(crate) block_size_multiple: usize,
 
-    /// Number of explored pattern branches.
+    /// Number of explored branches of distinguishers in greedy search.
     #[arg(short, long, default_value_t = 100)]
     pub(crate) k: usize,
 
@@ -29,11 +29,11 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 100)]
     pub(crate) min_difference: usize,
 
-    /// Number of patterns tested in combinations for multipattern.
+    /// Number of distinguishers tested in combinations for a multipattern.
     #[arg(long, default_value_t = 50)]
     pub(crate) top_n: usize,
 
-    /// Maximal number of bits (variables) used in distinguishers.
+    /// Maximal number of bits (variables) used in a distinguishers.
     #[arg(long)]
     pub(crate) max_bits: Option<usize>,
 
@@ -41,19 +41,19 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 2)]
     pub(crate) patterns_combined: usize,
 
-    /// Length of patterns evaluated in the first phase.
+    /// Degree of distinguishers evaluated in the first phase.
     #[arg(short, long, default_value_t = 2)]
-    pub(crate) base_pattern_size: usize,
+    pub(crate) deg: usize,
 
     /// Option whether the input data should be divided into training, validation and testing data.
     #[arg(long, short)]
     pub(crate) validation_and_testing_split: bool,
 
-    /// Option whether histogram should be used as an alternative evaluation method.
+    /// Option whether histogram should be used as a strengthening method.
     #[arg(long)]
     pub(crate) hist: bool,
 
-    /// Option whether histogram should be used as an alternative evaluation method.
+    /// Config file with list of CoolTest configurations to run.
     #[arg(long, short)]
     pub(crate) config: bool,
 }

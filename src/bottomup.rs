@@ -260,8 +260,8 @@ pub(crate) fn bottomup(
     let top_k = phase_one(
         data,
         args.k,
-        args.block_size * args.block_size_multiple,
-        args.base_pattern_size,
+        args.block * args.block_size_multiple,
+        args.deg,
     );
     println!("phase one {:.2?}", start.elapsed());
     start = Instant::now();
@@ -271,7 +271,7 @@ pub(crate) fn bottomup(
         data,
         validation_data_option,
         args.min_difference,
-        args.block_size * args.block_size_multiple,
+        args.block * args.block_size_multiple,
         args.max_bits,
     );
     println!("phase two {:.2?}", start.elapsed());
