@@ -263,7 +263,7 @@ pub(crate) fn bottomup(
         args.block * args.block_size_multiple,
         args.deg,
     );
-    println!("phase one {:.2?}", start.elapsed());
+    println!("Phase one finished in {:.2?}.", start.elapsed());
     start = Instant::now();
     let r = phase_two(
         args.k,
@@ -274,6 +274,6 @@ pub(crate) fn bottomup(
         args.block * args.block_size_multiple,
         args.max_bits,
     );
-    println!("phase two {:.2?}", start.elapsed());
+    println!("Phase two finished in {:.2?}.", start.elapsed());
     r
 }

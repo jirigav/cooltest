@@ -53,6 +53,10 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) hist: bool,
 
+    /// Significance level
+    #[arg(short, long, default_value_t = 0.0004)]
+    pub(crate) alpha: f64,
+
     /// Config file with list of CoolTest configurations to run.
     #[arg(long, short)]
     pub(crate) config: bool,
@@ -148,11 +152,7 @@ pub(crate) fn prepare_data(
     } else {
         training_data = transform_training_data(data, block_size, block_size_multiple);
     }
-    println!(
-        "tr {}, te {}",
-        training_data.data.len(),
-        testing_data_option.as_ref().unwrap().data.len()
-    );
+
     (training_data, validation_data_option, testing_data_option)
 }
 
