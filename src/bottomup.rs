@@ -71,7 +71,6 @@ fn phase_two(
             mp.increase_count(p.count.unwrap());
             mp.z_score(data.len());
             mp
-        
         })
         .collect_vec();
     let mut best_mp: Option<MultiPattern> = None;
@@ -79,31 +78,50 @@ fn phase_two(
     while !top_mp.is_empty() && combined < 30 {
         combined += 1;
         let mut new_top_mp: Vec<MultiPattern> = Vec::new();
-        for mp in &top_mp{
+        for mp in &top_mp {
             let mut best_improving: Option<MultiPattern> = None;
-            let bits: HashSet<usize> = mp.patterns
+            let bits: HashSet<usize> = mp
+                .patterns
                 .iter()
                 .flat_map(|x| x.bits.iter().copied())
                 .collect();
-            for p in &sorted_patterns{
-                if mp.patterns.contains(&p){
+            for p in &sorted_patterns {
+                if mp.patterns.contains(&p) {
                     continue;
                 }
-                
-                if bits.intersection(&p.bits.iter().copied().collect()).next().is_some(){ // skip if any bits are shared
+
+                if bits
+                    .intersection(&p.bits.iter().copied().collect())
+                    .next()
+                    .is_some()
+                {
+                    // skip if any bits are shared
                     continue;
                 }
                 let mut new_mp = mp.clone();
                 new_mp.add_disjoint_pattern(p.clone());
-                
-                new_mp.increase_count(data.par_iter().map(|block| new_mp.evaluate(block)).filter(|x| *x).count());
 
-                if new_mp.get_count().abs_diff((new_mp.probability * (data.len() as f64)) as usize) < combined * min_difference{
+                new_mp.increase_count(
+                    data.par_iter()
+                        .map(|block| new_mp.evaluate(block))
+                        .filter(|x| *x)
+                        .count(),
+                );
+
+                if new_mp
+                    .get_count()
+                    .abs_diff((new_mp.probability * (data.len() as f64)) as usize)
+                    < combined * min_difference
+                {
                     continue;
                 }
 
                 let z = new_mp.z_score(data.len());
-                if !new_top_mp.contains(&new_mp) && z < mp.z_score.unwrap() && (best_improving.is_none() || best_improving.as_ref().unwrap().z_score.unwrap() > z){
+                if !new_top_mp.contains(&new_mp)
+                    && z < mp.z_score.unwrap()
+                    && (best_improving.is_none()
+                        || best_improving.as_ref().unwrap().z_score.unwrap() > z)
+                {
                     best_improving = Some(new_mp.clone());
                 }
 
@@ -111,13 +129,11 @@ fn phase_two(
                     best_mp = Some(new_mp);
                 }
             }
-            if let Some(imp) = best_improving{
+            if let Some(imp) = best_improving {
                 new_top_mp.push(imp);
             }
-            
         }
         top_mp = new_top_mp;
-
     }
     best_mp.unwrap()
 }
