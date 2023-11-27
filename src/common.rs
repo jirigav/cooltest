@@ -14,28 +14,35 @@ pub(crate) struct Args {
 
     /// Length of block of data.
     #[arg(short, long, default_value_t = 128)]
-    pub(crate) block_size: usize,
+    pub(crate) block: usize,
 
-    /// Number of explored pattern branches.
+    /// Number of explored branches of distinguishers in greedy search.
     #[arg(short, long, default_value_t = 10)]
     pub(crate) k: usize,
 
-    /// Length of patterns evaluated in the first phase.
+    /// Number of bits in histograms in brute-force search.
     #[arg(short, long, default_value_t = 2)]
-    pub(crate) base_pattern_size: usize,
+    pub(crate) deg: usize,
 
     /// Option whether the input data should be divided into training, validation and testing data.
     #[arg(long, short)]
     pub(crate) validation_and_testing_split: bool,
 
+    /// Maximal number of bits in a histogram during greedy search.
     #[arg(long, short, default_value_t = 10)]
     pub(crate) max_bits: usize,
 
+    /// When some histogram reaches this value of p-value, greedy search ends.
     #[arg(long, short, default_value_t = 0.0)]
     pub(crate) stop_p_value: f64,
 
+    /// When the change between histograms between consecutive rounds reaches this value the search stops.
     #[arg(long, short, default_value_t = 0.0)]
     pub(crate) stop_change: f64,
+
+    /// Significance level
+    #[arg(short, long, default_value_t = 0.0004)]
+    pub(crate) alpha: f64,
 }
 
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {

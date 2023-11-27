@@ -7,10 +7,25 @@ use clap::Parser;
 use common::prepare_data;
 use std::time::Instant;
 
+fn print_results(p_value: f64, z_score: f64, alpha: f64) {
+    println!("---------------------------------------------------");
+    println!("z-score: {z_score}");
+    println!("p-value: {p_value:.0e}");
+    if p_value >= alpha {
+        println!(
+            "As the p-value >= alpha {alpha:.0e}, the randomness hypothesis cannot be rejected."
+        );
+        println!("= CoolTest could not find statistically significant non-randomness.");
+    } else {
+        println!("As the p-value < alpha {alpha:.0e}, the randomness hypothesis is REJECTED.");
+        println!("= Data is not random.");
+    }
+}
+
 fn run_bottomup(args: Args) {
     let (training_data, _validation_data_option, testing_data_option) = prepare_data(
         &args.data_source,
-        args.block_size,
+        args.block,
         true,
         args.validation_and_testing_split,
     );
@@ -18,9 +33,9 @@ fn run_bottomup(args: Args) {
     let start = Instant::now();
     let hist = bottomup(
         &training_data,
-        args.block_size,
+        args.block,
         args.k,
-        args.base_pattern_size,
+        args.deg,
         args.max_bits,
         args.stop_p_value,
         args.stop_change,
@@ -35,16 +50,15 @@ fn run_bottomup(args: Args) {
         count,
         prob * (hist.best_division as f64),
     );
-
-    println!("z-score: {}", z);
-    println!(
-        "p-value: {:.0e}",
+    print_results(
         p_value(
             count,
             testing_data.len(),
-            prob * (hist.best_division as f64)
-        )
-    );
+            prob * (hist.best_division as f64),
+        ),
+        z,
+        args.alpha,
+    )
 }
 
 fn main() {

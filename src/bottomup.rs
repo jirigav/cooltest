@@ -105,9 +105,14 @@ impl Histogram {
     }
 }
 
-impl std::fmt::Debug for Histogram{
+impl std::fmt::Debug for Histogram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Histogram").field("bits", &self.bits).field("best_division", &self.best_division).field("z_score", &self.z_score).field("changes", &self.changes).finish()
+        f.debug_struct("Histogram")
+            .field("bits", &self.bits)
+            .field("best_division", &self.best_division)
+            .field("z_score", &self.z_score)
+            .field("changes", &self.changes)
+            .finish()
     }
 }
 
