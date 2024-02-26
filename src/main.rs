@@ -27,18 +27,14 @@ fn run_bottomup(args: Args) {
         &args.data_source,
         args.block,
         true,
-        args.validation_and_testing_split,
+        false,
     );
 
     let start = Instant::now();
     let hist = bottomup(
         &training_data,
         args.block,
-        args.k,
         args.deg,
-        args.max_bits,
-        args.stop_p_value,
-        args.stop_change,
     );
     println!("training finished in {:?}", start.elapsed());
     let testing_data = testing_data_option.unwrap();

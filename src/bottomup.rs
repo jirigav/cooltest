@@ -1,10 +1,10 @@
-use std::time::Instant;
+use std::{fmt::DebugStruct, ops::Index, time::Instant};
 
 use itertools::Itertools;
-use rayon::prelude::*;
+use rayon::{prelude::*, vec};
 
 use crate::common::{
-    bits_block_eval, count_combinations, multi_eval_count, p_value_to_z_score, transform_data,
+    bits_block_eval, count_combinations, multi_eval_count, transform_data,
     z_score, Data,
 };
 
@@ -19,39 +19,6 @@ pub(crate) struct Histogram {
 }
 
 impl Histogram {
-    pub(crate) fn get_hist(bits: &Vec<usize>, data: &[Vec<u8>]) -> Histogram {
-        let mut hist = vec![0; 2_usize.pow(bits.len() as u32)];
-        for block in data {
-            hist[bits_block_eval(bits, block)] += 1;
-        }
-
-        let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
-        indices.sort_by(|a, b| hist[*b].cmp(&hist[*a]));
-
-        let mut max_z = 0.0;
-        let mut best_i = 0;
-        let prob = 2.0_f64.powf(-(bits.len() as f64));
-
-        for i in 1..2_usize.pow(bits.len() as u32) {
-            let mut count = 0;
-            for k in 0..i {
-                count += hist[indices[k]];
-            }
-            let z = z_score(data.len(), count, prob * (i as f64));
-            if z > max_z {
-                max_z = z;
-                best_i = i;
-            }
-        }
-        Histogram {
-            bits: bits.to_vec(),
-            _bins: hist,
-            sorted_indices: indices,
-            best_division: best_i,
-            z_score: max_z,
-            changes: Vec::new(),
-        }
-    }
 
     pub(crate) fn from_bins(bits: Vec<usize>, bins: Vec<usize>) -> Histogram {
         let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
@@ -93,16 +60,6 @@ impl Histogram {
         }
         count
     }
-
-    pub(crate) fn change(&self) -> f64 {
-        let half_len = self._bins.len() / 2;
-        let mut r = 0.0;
-        for i in 0..half_len {
-            let exp = (self._bins[i] + self._bins[i + half_len]) as f64 / 2.0;
-            r += ((self._bins[i] as f64) - exp).powf(2.0);
-        }
-        r
-    }
 }
 
 impl std::fmt::Debug for Histogram {
@@ -114,6 +71,104 @@ impl std::fmt::Debug for Histogram {
             .field("changes", &self.changes)
             .finish()
     }
+}
+
+
+fn num_to_bits(mut k: usize, l: usize) -> Vec<bool> {
+    let mut tf = Vec::new();
+    while k != 0 {
+        tf.push(k%2 == 1);
+        k /= 2;
+    }
+    
+    while tf.len() < l{
+        tf.push(false);
+    }
+    tf
+}
+
+fn bits_to_num(tf: Vec<bool>) -> usize {
+    let mut pow2 = 1;
+    let mut res = 0;
+    for b in tf{
+        if b{
+            res += pow2;
+        }
+        pow2 *= 2;
+    }
+    res
+}
+
+fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Histogram> {
+
+    let mut start = Instant::now();
+
+    let mut hists: Vec<Vec<usize>> = Vec::new();
+    for i in 0..block_size{
+        let mut ones: usize = 0;
+        let mut it = data.data.iter().peekable();
+        while let Some(blocks) = it.next() {
+            let is_last = it.peek().is_none();
+            ones += multi_eval_count(0, &vec![i], blocks, data.mask, is_last) as usize;
+        }
+        hists.push(vec![(data.num_of_blocks as usize) - ones, ones])
+    }
+    println!("One bits {:?}", start.elapsed());
+    start = Instant::now();
+
+    let mut prev_bits: Vec<Vec<usize>> = (0..block_size).map(|x| vec![x]).collect();
+    for d in 2..=deg{
+        let bits_vects = (0..block_size).combinations(d).collect_vec();
+
+        let mut new_hists = Vec::new();
+
+        for bits in bits_vects.iter(){
+            let mut bins = vec![0;2_usize.pow(d as u32)];
+            let mut ones: usize = 0;
+            let mut it = data.data.iter().peekable();
+            while let Some(blocks) = it.next() {
+                let is_last = it.peek().is_none();
+                ones += multi_eval_count(0, bits, blocks, data.mask, is_last) as usize;
+            }
+
+            let value = 2_usize.pow(d as u32) - 1;
+
+            bins[value] = ones;
+
+            for k in (0..value).rev(){
+                let mut tf = num_to_bits(k, bits.len());
+                let ind = tf.iter().position(|x| *x == false).unwrap();
+                tf[ind] = true;
+                let val = bits_to_num(tf.clone()); // previous result on the same level
+
+                tf.remove(ind);
+                let mut bits2 = bits.clone();
+                bits2.remove(ind);
+
+                let prev = hists[prev_bits.iter().position(|x| *x == bits2).unwrap()][bits_to_num(tf)]; // result from prev layer
+
+                bins[k] = (prev - bins[val]) as usize;
+            }
+
+            new_hists.push(bins);   
+        }
+        hists = new_hists;
+        prev_bits = bits_vects;
+    }
+    println!("main part {:?}", start.elapsed());
+    start = Instant::now();
+    hists.iter_mut().for_each(|x| x.reverse());
+    let bits = (0..block_size).combinations(deg).collect_vec();
+    let mut best: Vec<_> = hists
+    .into_iter()
+    .enumerate()
+    .map(|(i, bins)| Histogram::from_bins(bits[i].clone(), bins))
+    .collect();
+
+    best.sort_by(|a, b| b.z_score.partial_cmp(&a.z_score).unwrap());
+    println!("rest {:?}", start.elapsed());
+    start = Instant::now();
+    best.into_iter().take(k).collect()
 }
 
 fn phase_one(data: &Data, block_size: usize, base_degree: usize, k: usize) -> Vec<Histogram> {
@@ -145,91 +200,30 @@ fn phase_one(data: &Data, block_size: usize, base_degree: usize, k: usize) -> Ve
     best.into_iter().take(k).collect()
 }
 
-fn phase_two(
-    data: &[Vec<u8>],
-    block_size: usize,
-    mut top_k: Vec<Histogram>,
-    max_bits: usize,
-    stop_z: f64,
-    stop_change: f64,
-) -> Vec<Histogram> {
-    let mut final_bins: Vec<Histogram> = Vec::new();
-    let mut length = top_k[0].bits.len();
-    while !top_k.is_empty() && length < max_bits {
-        length += 1;
-        let mut new_top: Vec<Histogram> = Vec::new();
-
-        for (i, hist) in top_k
-            .par_iter()
-            .map(|hist| {
-                let mut best_imp: Option<Histogram> = None;
-                for bit in 0..block_size {
-                    if hist.bits.contains(&bit) {
-                        continue;
-                    }
-                    let mut new_bits = hist.bits.clone();
-                    new_bits.push(bit);
-                    let mut new_hist = Histogram::get_hist(&new_bits.to_vec(), data);
-                    if new_hist.z_score < hist.z_score || new_hist.change() < stop_change {
-                        continue;
-                    }
-
-                    if best_imp.is_none()
-                        || f64::abs(best_imp.as_ref().unwrap().z_score) < f64::abs(new_hist.z_score)
-                    {
-                        new_hist.changes = hist.changes.clone();
-                        best_imp = Some(new_hist);
-                    }
-                }
-                best_imp
-            })
-            .enumerate()
-            .collect::<Vec<_>>()
-        {
-            if let Some(mut imp) = hist {
-                imp.changes.push(imp.change());
-                new_top.push(imp);
-            } else {
-                final_bins.push(top_k[i].clone());
-            }
-        }
-        top_k = new_top;
-        if top_k.iter().any(|h| f64::abs(h.z_score) > stop_z) {
-            println!("stop z: {stop_z}");
-            break;
-        }
-    }
-    final_bins.extend(top_k);
-    final_bins
-}
-
 pub(crate) fn bottomup(
     data: &Vec<Vec<u8>>,
     block_size: usize,
-    k: usize,
     base_degree: usize,
-    max_bits: usize,
-    stop_p_value: f64,
-    stop_change: f64,
 ) -> Histogram {
-    let mut start = Instant::now();
-    let top_k = phase_one(&transform_data(data), block_size, base_degree, k);
+    let start = Instant::now();
+    let top_k = alt_phase_one(&transform_data(data), block_size, base_degree, 1);
     println!("Phase one in {:?}", start.elapsed());
-    start = Instant::now();
-    let mut r = phase_two(
-        data,
-        block_size,
-        top_k,
-        max_bits,
-        p_value_to_z_score(stop_p_value),
-        stop_change,
-    );
-    println!("Phase two in {:?}", start.elapsed());
-    r.sort_unstable_by(|a, b| {
-        f64::abs(b.z_score)
-            .partial_cmp(&f64::abs(a.z_score))
-            .unwrap()
-    });
-    println!("{:?}", r[0]);
-    r[0].clone()
+
+    println!("{:?}", top_k[0]);
+    top_k[0].clone()
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::{num_to_bits, bits_to_num};
+
+    #[test]
+    fn exploration() {
+        for i in 0..8{
+            println!("{}, {:?}", i, num_to_bits(i, 3));
+            assert_eq!(bits_to_num(num_to_bits(i, 3)), i as usize)
+        }
+    }
 }

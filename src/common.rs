@@ -16,29 +16,9 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 128)]
     pub(crate) block: usize,
 
-    /// Number of explored branches of distinguishers in greedy search.
-    #[arg(short, long, default_value_t = 10)]
-    pub(crate) k: usize,
-
     /// Number of bits in histograms in brute-force search.
     #[arg(short, long, default_value_t = 2)]
     pub(crate) deg: usize,
-
-    /// Option whether the input data should be divided into training, validation and testing data.
-    #[arg(long, short)]
-    pub(crate) validation_and_testing_split: bool,
-
-    /// Maximal number of bits in a histogram during greedy search.
-    #[arg(long, short, default_value_t = 10)]
-    pub(crate) max_bits: usize,
-
-    /// When some histogram reaches this value of p-value, greedy search ends.
-    #[arg(long, short, default_value_t = 0.0)]
-    pub(crate) stop_p_value: f64,
-
-    /// When the change between histograms between consecutive rounds reaches this value the search stops.
-    #[arg(long, short, default_value_t = 0.0)]
-    pub(crate) stop_change: f64,
 
     /// Significance level
     #[arg(short, long, default_value_t = 0.0004)]
@@ -72,7 +52,7 @@ pub(crate) fn count_combinations(n: usize, r: usize) -> usize {
 pub(crate) struct Data {
     pub(crate) data: Vec<Vec<u128>>,
     pub(crate) mask: u128,
-    pub(crate) _num_of_blocks: usize,
+    pub(crate) num_of_blocks: u32,
 }
 
 pub(crate) fn multi_eval(
@@ -172,7 +152,7 @@ pub(crate) fn transform_data(data: &Vec<Vec<u8>>) -> Data {
     Data {
         data: result,
         mask,
-        _num_of_blocks: data.len(),
+        num_of_blocks: data.len() as u32,
     }
 }
 
@@ -193,26 +173,4 @@ pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> 
             .unwrap();
         result
     })
-}
-
-pub(crate) fn p_value_to_z_score(p_value: f64) -> f64 {
-    if p_value == 0.0 {
-        return f64::MAX;
-    }
-    pyo3::prepare_freethreaded_python();
-    f64::abs(Python::with_gil(|py| {
-        let scipy = PyModule::import(py, "scipy").unwrap();
-        let result: f64 = scipy
-            .getattr("stats")
-            .unwrap()
-            .getattr("norm")
-            .unwrap()
-            .getattr("ppf")
-            .unwrap()
-            .call1((p_value,))
-            .unwrap()
-            .extract()
-            .unwrap();
-        result
-    }))
 }
