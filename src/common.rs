@@ -109,11 +109,16 @@ pub(crate) fn multi_eval_count(
 
 fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
     let len_of_block_in_bytes = block_size / 8;
-    fs::read(path)
+    let mut data: Vec<_> = fs::read(path)
         .unwrap()
         .chunks(len_of_block_in_bytes)
         .map(<[u8]>::to_vec)
-        .collect()
+        .collect();
+    if data[data.len() - 1].len() != len_of_block_in_bytes {
+        println!("Data are not aligned with block size, dropping last block!");
+        data.pop();
+    }
+    data
 }
 
 pub(crate) fn prepare_data(
@@ -178,9 +183,11 @@ pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> 
         let result: f64 = scipy
             .getattr("stats")
             .unwrap()
-            .getattr("binom_test")
+            .getattr("binomtest")
             .unwrap()
             .call1((positive, sample_size, probability, "two-sided"))
+            .unwrap()
+            .getattr("pvalue")
             .unwrap()
             .extract()
             .unwrap();
