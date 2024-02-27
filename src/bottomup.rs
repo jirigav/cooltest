@@ -72,33 +72,46 @@ impl std::fmt::Debug for Histogram {
 }
 
 
-fn num_to_bits(mut k: usize, l: usize) -> Vec<bool> {
-    let mut tf = Vec::new();
-    while k != 0 {
-        tf.push(k%2 == 1);
-        k /= 2;
+fn first_zero_bit(mut k: usize) -> usize {
+    let mut i = 0;
+    while k !=0 && k%2 == 1 {
+        k >>= 1;
+        i += 1;
     }
-    
-    while tf.len() < l{
-        tf.push(false);
-    }
-    tf
+    i
 }
 
-fn bits_to_num(tf: Vec<bool>) -> usize {
-    let mut pow2 = 1;
-    let mut res = 0;
-    for b in tf{
-        if b{
-            res += pow2;
+fn choose(n: usize, r: usize) -> usize {
+    if r > n {
+        0
+    } else {
+        (1..=r).fold(1, |acc, val| acc * (n - val + 1) / val)
+    }
+}
+
+
+fn compute_index(bits: &Vec<usize>, block_size: usize) -> usize{
+    let mut result = 0;
+    let mut l = bits.len() - 1;
+    let mut j = 0;
+
+    for i in 0..block_size{
+        if i < bits[j] {
+            result += choose(block_size - i - 1, l)
+        } else {
+            l -= 1;
+            j += 1;
         }
-        pow2 *= 2;
-    }
-    res
+        if j >= bits.len(){
+            break;
+        }
+    } 
+
+    result
 }
 
-fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Histogram> {
-
+fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Histogram> {
+    compute_index(&vec![3,6,7], 8);
     let mut start = Instant::now();
 
     let mut hists: Vec<Vec<usize>> = Vec::new();
@@ -109,7 +122,6 @@ fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hi
     println!("One bits {:?}", start.elapsed());
     start = Instant::now();
 
-    let mut prev_bits: Vec<Vec<usize>> = (0..block_size).map(|x| vec![x]).collect();
     for d in 2..=deg{
         let bits_vects = (0..block_size).combinations(d).collect_vec();
 
@@ -118,35 +130,34 @@ fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hi
         for bits in bits_vects.iter(){
             let mut bins = vec![0;2_usize.pow(d as u32)];
             let ones: usize = multi_eval( bits, data);
-            
 
             let value = 2_usize.pow(d as u32) - 1;
 
             bins[value] = ones;
 
             for k in (0..value).rev(){
-                let mut tf = num_to_bits(k, bits.len());
-                let ind = tf.iter().position(|x| *x == false).unwrap();
-                tf[ind] = true;
-                let val = bits_to_num(tf.clone()); // previous result on the same level
+                // find first zero in bin's index k and replace if with one. i.e. obtain index with distance 1 for which the bin value is already computed
+                let mut k2 = k;
+                let ind = first_zero_bit(k); 
+                k2 ^= 1 << ind; // flip bit to one
 
-                tf.remove(ind);
+                let n = (k2&((1 << ind) -1)) + ((k2 >>(ind + 1)) << ind); // remove ind-th bit from the number
+
                 let mut bits2 = bits.clone();
                 bits2.remove(ind);
 
-                let prev = hists[prev_bits.iter().position(|x| *x == bits2).unwrap()][bits_to_num(tf)]; // result from prev layer
+                let prev = hists[compute_index(&bits2, block_size)][n]; // result from prev layer
 
-                bins[k] = (prev - bins[val]) as usize;
+                bins[k] = (prev - bins[k2]) as usize;
             }
 
             new_hists.push(bins);   
         }
         hists = new_hists;
-        prev_bits = bits_vects;
     }
     println!("main part {:?}", start.elapsed());
     start = Instant::now();
-    //hists.iter_mut().for_each(|x| x.reverse());
+
     let bits = (0..block_size).combinations(deg).collect_vec();
     let mut best: Vec<_> = hists
     .into_iter()
@@ -166,24 +177,9 @@ pub(crate) fn bottomup(
     base_degree: usize,
 ) -> Histogram {
     let start = Instant::now();
-    let top_k = alt_phase_one(&transform_data2(data), block_size, base_degree, 1);
+    let top_k = brute_force(&transform_data2(data), block_size, base_degree, 1);
     println!("Phase one in {:?}", start.elapsed());
 
     println!("{:?}", top_k[0]);
     top_k[0].clone()
-}
-
-
-
-#[cfg(test)]
-mod tests {
-    use super::{num_to_bits, bits_to_num};
-
-    #[test]
-    fn exploration() {
-        for i in 0..8{
-            println!("{}, {:?}", i, num_to_bits(i, 3));
-            assert_eq!(bits_to_num(num_to_bits(i, 3)), i as usize)
-        }
-    }
 }
