@@ -23,11 +23,9 @@ fn print_results(p_value: f64, z_score: f64, alpha: f64) {
 }
 
 fn run_bottomup(args: Args) {
-    let (training_data, _validation_data_option, testing_data_option) = prepare_data(
+    let (training_data, testing_data) = prepare_data(
         &args.data_source,
         args.block,
-        true,
-        false,
     );
 
     let start = Instant::now();
@@ -37,7 +35,6 @@ fn run_bottomup(args: Args) {
         args.deg,
     );
     println!("training finished in {:?}", start.elapsed());
-    let testing_data = testing_data_option.unwrap();
 
     let count = hist.evaluate(&testing_data);
     let prob = 2.0_f64.powf(-(hist.bits.len() as f64));

@@ -41,50 +41,25 @@ pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
     ((block[byte_index] >> offset) & 1) == 1
 }
 
-pub(crate) fn count_combinations(n: usize, r: usize) -> usize {
-    if r > n {
-        0
-    } else {
-        (1..=r.min(n - r)).fold(1, |acc, val| acc * (n - val + 1) / val)
-    }
-}
 
 pub(crate) struct Data {
     pub(crate) data: Vec<Vec<u128>>,
-    pub(crate) mask: u128,
+    pub(crate) _mask: u128,
     pub(crate) num_of_blocks: u32,
 }
 
+
 pub(crate) fn multi_eval(
-    bits_signs: usize,
     bits: &[usize],
-    tr_data: &[u128],
-    mask: u128,
-    is_last: bool,
-) -> u128 {
-    let mut result = u128::MAX;
+    data: &Data,
+) -> usize {
+    let mut result = vec![u128::MAX; data.data[0].len()];
 
-    for (i, b) in bits.iter().enumerate() {
-        if ((bits_signs >> i) & 1) == 1 {
-            result &= tr_data[*b];
-        } else {
-            result &= tr_data[*b] ^ u128::MAX;
-        }
+    for b in bits.iter(){
+        result = result.iter().zip(&data.data[*b]).map(|(a, b)| a&b).collect();
     }
-    if is_last {
-        result &= mask;
-    }
-    result
-}
-
-pub(crate) fn multi_eval_count(
-    bits_signs: usize,
-    bits: &[usize],
-    tr_data: &[u128],
-    mask: u128,
-    is_last: bool,
-) -> u32 {
-    multi_eval(bits_signs, bits, tr_data, mask, is_last).count_ones()
+        
+    result.iter().map(|x| x.count_ones() as usize).sum::<usize>()
 }
 
 fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
@@ -104,32 +79,17 @@ fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
 pub(crate) fn prepare_data(
     data_source: &str,
     block_size: usize,
-    halving: bool,
-    validation: bool,
-) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>, Option<Vec<Vec<u8>>>) {
+) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
     let data = load_data(data_source, block_size);
-    let training_data;
-    let mut testing_data_option = None;
-    let mut validation_data_option = None;
 
-    if validation {
-        let (tr_data, testing_data) = data.split_at(data.len() / 3);
-        let (val_data, test_data) = testing_data.split_at(testing_data.len() / 2);
-        testing_data_option = Some(test_data.to_vec());
-        validation_data_option = Some(val_data.to_vec());
-        training_data = tr_data.to_vec();
-    } else if halving {
-        let (tr_data, testing_data) = data.split_at(data.len() / 2);
-        testing_data_option = Some(testing_data.to_vec());
-        training_data = tr_data.to_vec();
-    } else {
-        training_data = data;
-    }
-    (training_data, validation_data_option, testing_data_option)
+    let (tr_data, testing_data) = data.split_at(data.len() / 2);
+
+    (tr_data.to_vec(), testing_data.to_vec())
 }
 
+
 /// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
-pub(crate) fn transform_data(data: &Vec<Vec<u8>>) -> Data {
+pub(crate) fn transform_data2(data: &Vec<Vec<u8>>) -> Data {
     let mut result = Vec::new();
     let block_size = data[0].len() * 8;
     for blocks in data.chunks(128) {
@@ -149,9 +109,18 @@ pub(crate) fn transform_data(data: &Vec<Vec<u8>>) -> Data {
     } else {
         2_u128.pow((data.len() % 128) as u32) - 1
     };
+    let mut d = Vec::new();
+
+    for i in 0..(data[0].len()*8){
+        let mut bit = Vec::new();
+        for block in result.iter(){
+            bit.push(block[i].clone())
+        }
+        d.push(bit);
+        }
     Data {
-        data: result,
-        mask,
+        data: d,
+        _mask: mask,
         num_of_blocks: data.len() as u32,
     }
 }

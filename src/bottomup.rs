@@ -1,11 +1,9 @@
-use std::{fmt::DebugStruct, ops::Index, time::Instant};
+use std::time::Instant;
 
 use itertools::Itertools;
-use rayon::{prelude::*, vec};
 
 use crate::common::{
-    bits_block_eval, count_combinations, multi_eval_count, transform_data,
-    z_score, Data,
+    bits_block_eval, multi_eval, transform_data2, z_score, Data
 };
 
 #[derive(Clone)]
@@ -105,12 +103,7 @@ fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hi
 
     let mut hists: Vec<Vec<usize>> = Vec::new();
     for i in 0..block_size{
-        let mut ones: usize = 0;
-        let mut it = data.data.iter().peekable();
-        while let Some(blocks) = it.next() {
-            let is_last = it.peek().is_none();
-            ones += multi_eval_count(0, &vec![i], blocks, data.mask, is_last) as usize;
-        }
+        let ones: usize = multi_eval(&vec![i], data);
         hists.push(vec![(data.num_of_blocks as usize) - ones, ones])
     }
     println!("One bits {:?}", start.elapsed());
@@ -124,12 +117,8 @@ fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hi
 
         for bits in bits_vects.iter(){
             let mut bins = vec![0;2_usize.pow(d as u32)];
-            let mut ones: usize = 0;
-            let mut it = data.data.iter().peekable();
-            while let Some(blocks) = it.next() {
-                let is_last = it.peek().is_none();
-                ones += multi_eval_count(0, bits, blocks, data.mask, is_last) as usize;
-            }
+            let ones: usize = multi_eval( bits, data);
+            
 
             let value = 2_usize.pow(d as u32) - 1;
 
@@ -157,7 +146,7 @@ fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hi
     }
     println!("main part {:?}", start.elapsed());
     start = Instant::now();
-    hists.iter_mut().for_each(|x| x.reverse());
+    //hists.iter_mut().for_each(|x| x.reverse());
     let bits = (0..block_size).combinations(deg).collect_vec();
     let mut best: Vec<_> = hists
     .into_iter()
@@ -167,36 +156,7 @@ fn alt_phase_one(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hi
 
     best.sort_by(|a, b| b.z_score.partial_cmp(&a.z_score).unwrap());
     println!("rest {:?}", start.elapsed());
-    start = Instant::now();
-    best.into_iter().take(k).collect()
-}
 
-fn phase_one(data: &Data, block_size: usize, base_degree: usize, k: usize) -> Vec<Histogram> {
-    let dises_per_bits = 2_usize.pow(base_degree as u32);
-    let num_of_dises = count_combinations(block_size, base_degree) * dises_per_bits;
-    let mut counts: Vec<usize> = vec![0; num_of_dises];
-    let bits = (0..block_size).combinations(base_degree).collect_vec();
-
-    let mut it = data.data.iter().peekable();
-    while let Some(blocks) = it.next() {
-        let is_last = it.peek().is_none();
-
-        counts.par_iter_mut().enumerate().for_each(|(i, c)| {
-            let bits_index = i / dises_per_bits;
-            let bits_signs = i % dises_per_bits;
-            *c += multi_eval_count(bits_signs, &bits[bits_index], blocks, data.mask, is_last)
-                as usize;
-        })
-    }
-
-    let mut best: Vec<_> = counts
-        .into_par_iter()
-        .chunks(dises_per_bits)
-        .enumerate()
-        .map(|(i, bins)| Histogram::from_bins(bits[i].clone(), bins))
-        .collect();
-
-    best.sort_by(|a, b| b.z_score.partial_cmp(&a.z_score).unwrap());
     best.into_iter().take(k).collect()
 }
 
@@ -206,7 +166,7 @@ pub(crate) fn bottomup(
     base_degree: usize,
 ) -> Histogram {
     let start = Instant::now();
-    let top_k = alt_phase_one(&transform_data(data), block_size, base_degree, 1);
+    let top_k = alt_phase_one(&transform_data2(data), block_size, base_degree, 1);
     println!("Phase one in {:?}", start.elapsed());
 
     println!("{:?}", top_k[0]);
