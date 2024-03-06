@@ -226,8 +226,9 @@ pub(crate) fn bottomup(
     let start = Instant::now();
     let top_k = brute_force(&transform_data2(data), block_size, base_degree, k);
     println!("Phase one in {:?}", start.elapsed());
+    
+    let res = combine_bins(&top_k, n, data);
 
-    println!("{:?}", top_k);
-
-    combine_bins(&top_k, n, data)
+    println!("{:?}", res);
+    res
 }
