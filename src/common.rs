@@ -20,8 +20,16 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 2)]
     pub(crate) deg: usize,
 
+    /// Number of best histograms taken for the second step.
+    #[arg(short, long, default_value_t = 1)]
+    pub(crate) k: usize,
+
+    /// Number of histograms combined in second step. 
+    #[arg(short, long, default_value_t = 1)]
+    pub(crate) n: usize,
+
     /// Significance level
-    #[arg(short, long, default_value_t = 0.0004)]
+    #[arg(short, long, default_value_t = 0.0001)]
     pub(crate) alpha: f64,
 }
 
@@ -52,8 +60,8 @@ pub(crate) struct Data {
 pub(crate) fn multi_eval(
     bits: &[usize],
     data: &Data,
-    mut t: Duration
-) -> (usize, Duration) {
+    t: &mut Duration
+) -> usize {
     let start = Instant::now();
     let mut result = vec![u128::MAX; data.data[0].len()];
     
@@ -62,8 +70,8 @@ pub(crate) fn multi_eval(
     }
         
     let r = result.iter().map(|x| x.count_ones() as usize).sum::<usize>();
-    t += start.elapsed();
-    (r, t)
+    *t += start.elapsed();
+    r
 }
 
 fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {

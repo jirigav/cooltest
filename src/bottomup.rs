@@ -16,6 +16,39 @@ pub(crate) struct Histogram {
 
 impl Histogram {
 
+    pub(crate) fn get_hist(bits: &Vec<usize>, data: &[Vec<u8>]) -> Histogram {
+        let mut hist = vec![0; 2_usize.pow(bits.len() as u32)];
+        for block in data {
+            hist[bits_block_eval(bits, block)] += 1;
+        }
+
+        let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
+        indices.sort_by(|a, b| hist[*b].cmp(&hist[*a]));
+
+        let mut max_z = 0.0;
+        let mut best_i = 0;
+        let prob = 2.0_f64.powf(-(bits.len() as f64));
+
+        for i in 1..2_usize.pow(bits.len() as u32) {
+            let mut count = 0;
+            for k in 0..i {
+                count += hist[indices[k]];
+            }
+            let z = z_score(data.len(), count, prob * (i as f64)).abs();
+            if z > max_z {
+                max_z = z;
+                best_i = i;
+            }
+        }
+        Histogram {
+            bits: bits.to_vec(),
+            sorted_indices: indices,
+            best_division: best_i,
+            z_score: max_z,
+        }
+    }
+
+
     pub(crate) fn from_bins(bits: Vec<usize>, bins: &Vec<usize>) -> Histogram {
         let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
         indices.sort_by(|a, b| bins[*b].cmp(&bins[*a]));
@@ -29,7 +62,7 @@ impl Histogram {
             for k in 0..i {
                 count += bins[indices[k]];
             }
-            let z = z_score(bins.iter().sum(), count, prob * (i as f64));
+            let z = z_score(bins.iter().sum(), count, prob * (i as f64)).abs();
             if z > max_z {
                 max_z = z;
                 best_i = i;
@@ -88,25 +121,46 @@ fn choose(n: usize, r: usize) -> usize {
 
 fn compute_index(bits: &Vec<usize>, block_size: usize) -> usize{
     let mut result = 0;
-    let mut l = bits.len() - 1;
     let mut j = 0;
+    let mut i = 0;
 
-    for i in 0..block_size{
+    while i < block_size && j < bits.len() {
         if i < bits[j] {
-            result += choose(block_size - i - 1, l)
+            result += choose(block_size - i - 1, bits.len() - j - 1)
         } else {
-            l -= 1;
             j += 1;
         }
-        if j >= bits.len(){
-            break;
-        }
-    } 
-
+        i += 1;
+    }
     result
 }
 
-fn brute_force(data: &Data, block_size: usize, deg: usize) -> Histogram {
+fn compute_bins(bits: &Vec<usize>, data: &Data, d: usize, hists: &Vec<Vec<usize>>, bins: &mut Vec<usize>, block_size: usize, t: &mut Duration) {
+    let ones;
+    ones = multi_eval( bits, data, t);
+
+    let value = 2_usize.pow(d as u32) - 1;
+
+    bins[value] = ones;
+
+    for k in (0..value).rev(){
+        // find first zero in bin's index k and replace if with one. i.e. obtain index with distance 1 for which the bin value is already computed
+        let mut k2 = k;
+        let ind = first_zero_bit(k); 
+        k2 ^= 1 << ind; // flip bit to one
+
+        let n = (k2&((1 << ind) -1)) + ((k2 >>(ind + 1)) << ind); // remove ind-th bit from the number
+
+        let mut bits2 = bits.clone();
+        bits2.remove(ind);
+
+        let prev = hists[compute_index(&bits2, block_size)][n]; // result from prev layer
+
+        bins[k] = (prev - bins[k2]) as usize;
+    }
+}
+
+fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Histogram> {
     let mut t = Duration::from_micros(0);
     compute_index(&vec![3,6,7], 8);
     let mut start = Instant::now();
@@ -114,79 +168,51 @@ fn brute_force(data: &Data, block_size: usize, deg: usize) -> Histogram {
     let mut hists: Vec<Vec<usize>> = Vec::new();
     for i in 0..block_size{
         let ones;
-        (ones, t) = multi_eval(&vec![i], data, t);
+        ones = multi_eval(&vec![i], data, &mut t);
         hists.push(vec![(data.num_of_blocks as usize) - ones, ones])
     }
     println!("One bits {:?}", start.elapsed());
     start = Instant::now();
 
     for d in 2..deg{
-
-        let mut new_hists = Vec::new();
+        let mut new_hists = Vec::with_capacity(2_usize.pow(deg as u32));
 
         for bits in (0..block_size).combinations(d){
             let mut bins = vec![0;2_usize.pow(d as u32)];
-            let ones;
-            (ones, t) = multi_eval( &bits, data, t);
-
-            let value = 2_usize.pow(d as u32) - 1;
-
-            bins[value] = ones;
-
-            for k in (0..value).rev(){
-                // find first zero in bin's index k and replace if with one. i.e. obtain index with distance 1 for which the bin value is already computed
-                let mut k2 = k;
-                let ind = first_zero_bit(k); 
-                k2 ^= 1 << ind; // flip bit to one
-
-                let n = (k2&((1 << ind) -1)) + ((k2 >>(ind + 1)) << ind); // remove ind-th bit from the number
-
-                let mut bits2 = bits.clone();
-                bits2.remove(ind);
-
-                let prev = hists[compute_index(&bits2, block_size)][n]; // result from prev layer
-
-                bins[k] = (prev - bins[k2]) as usize;
-            }
+            compute_bins(&bits, data, d, &hists, &mut bins, block_size, &mut t);
 
             new_hists.push(bins);   
         }
         hists = new_hists;
     }
-    let mut best_hist = Histogram::from_bins(vec![0], &vec![1, 1]);
+    let mut best_hists = vec![Histogram::from_bins(vec![0], &vec![1, 1]); k];
     let mut bins = vec![0;2_usize.pow(deg as u32)];
     for bits in (0..block_size).combinations(deg){
-        let ones;
-        (ones, t) = multi_eval( &bits, data, t);
-
-        let value = 2_usize.pow(deg as u32) - 1;
-
-        bins[value] = ones;
-
-        for k in (0..value).rev(){
-            // find first zero in bin's index k and replace if with one. i.e. obtain index with distance 1 for which the bin value is already computed
-            let mut k2 = k;
-            let ind = first_zero_bit(k); 
-            k2 ^= 1 << ind; // flip bit to one
-
-            let n = (k2&((1 << ind) -1)) + ((k2 >>(ind + 1)) << ind); // remove ind-th bit from the number
-
-            let mut bits2 = bits.clone();
-            bits2.remove(ind);
-
-            let prev = hists[compute_index(&bits2, block_size)][n]; // result from prev layer
-
-            bins[k] = (prev - bins[k2]) as usize;
-        }
+        compute_bins(&bits, data, deg, &hists, &mut bins, block_size, &mut t);
 
         let hist = Histogram::from_bins(bits, &bins);
-
-        if hist.z_score.abs() > best_hist.z_score.abs(){
-            best_hist = hist;
-        }
+        best_hists.push(hist);
+        best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
+        best_hists.pop();
     }
     println!("t {:?}", t);
     println!("main part {:?}", start.elapsed());
+    best_hists
+}
+
+fn combine_bins(hists: &Vec<Histogram>, n: usize, data: &[Vec<u8>]) -> Histogram {
+    let mut best_hist = Histogram::from_bins(vec![0], &vec![1, 1]);
+    for comb in hists.iter().combinations(n) {
+        let mut bits = comb.iter().flat_map(|x| x.bits.clone()).collect_vec();
+        bits.sort();
+        bits.dedup();
+
+        let hist = Histogram::get_hist(&bits, data);
+        if hist.z_score.abs() > best_hist.z_score.abs() {
+            best_hist = hist;
+        }
+    }
+
     best_hist
 }
 
@@ -194,11 +220,14 @@ pub(crate) fn bottomup(
     data: &Vec<Vec<u8>>,
     block_size: usize,
     base_degree: usize,
+    k: usize,
+    n: usize,
 ) -> Histogram {
     let start = Instant::now();
-    let top_k = brute_force(&transform_data2(data), block_size, base_degree);
+    let top_k = brute_force(&transform_data2(data), block_size, base_degree, k);
     println!("Phase one in {:?}", start.elapsed());
 
     println!("{:?}", top_k);
-    top_k
+
+    combine_bins(&top_k, n, data)
 }

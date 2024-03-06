@@ -33,6 +33,8 @@ fn run_bottomup(args: Args) {
         &training_data,
         args.block,
         args.deg,
+        args.k,
+        args.n
     );
     println!("training finished in {:?}", start.elapsed());
 
