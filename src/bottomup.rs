@@ -1,9 +1,10 @@
 use std::time::{Duration, Instant};
 
 use itertools::Itertools;
+use rayon::iter::*;
 
 use crate::common::{
-    bits_block_eval, multi_eval, transform_data2, z_score, Data
+    bits_block_eval, multi_eval, transform_data, z_score, Data
 };
 
 #[derive(Clone)]
@@ -163,7 +164,6 @@ fn compute_bins(bits: &Vec<usize>, data: &Data, d: usize, hists: &Vec<Vec<usize>
 fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Histogram> {
     let mut t = Duration::from_micros(0);
     compute_index(&vec![3,6,7], 8);
-    let mut start = Instant::now();
 
     let mut hists: Vec<Vec<usize>> = Vec::new();
     for i in 0..block_size{
@@ -171,8 +171,6 @@ fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hist
         ones = multi_eval(&vec![i], data, &mut t);
         hists.push(vec![(data.num_of_blocks as usize) - ones, ones])
     }
-    println!("One bits {:?}", start.elapsed());
-    start = Instant::now();
 
     for d in 2..deg{
         let mut new_hists = Vec::with_capacity(2_usize.pow(deg as u32));
@@ -195,12 +193,11 @@ fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hist
         best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
         best_hists.pop();
     }
-    println!("t {:?}", t);
-    println!("main part {:?}", start.elapsed());
+    println!("Stream operations: {:?}", t);
     best_hists
 }
 
-fn combine_bins(hists: &Vec<Histogram>, n: usize, data: &[Vec<u8>]) -> Histogram {
+fn _combine_bins(hists: &Vec<Histogram>, n: usize, data: &[Vec<u8>]) -> Histogram {
     let mut best_hist = Histogram::from_bins(vec![0], &vec![1, 1]);
     for comb in hists.iter().combinations(n) {
         let mut bits = comb.iter().flat_map(|x| x.bits.clone()).collect_vec();
@@ -221,14 +218,66 @@ pub(crate) fn bottomup(
     block_size: usize,
     base_degree: usize,
     k: usize,
-    n: usize,
+    max_bits: usize,
 ) -> Histogram {
-    let start = Instant::now();
-    let top_k = brute_force(&transform_data2(data), block_size, base_degree, k);
-    println!("Phase one in {:?}", start.elapsed());
+    let mut start = Instant::now();
+    let mut top_k = brute_force(&transform_data(data), block_size, base_degree, k);
+    println!("Brute-force finished in {:?}", start.elapsed());
     
-    let res = combine_bins(&top_k, n, data);
-
-    println!("{:?}", res);
+    if max_bits > base_degree {
+        start = Instant::now();
+        top_k = phase_two(data, block_size, top_k, max_bits); 
+        println!("Heuristic search finished in {:?}", start.elapsed());
+    }
+    
+    let res = top_k[0].clone();
+    println!("Distinguisher: {:?}", res);
     res
 }
+
+
+fn phase_two(
+    data: &[Vec<u8>],
+    block_size: usize,
+    mut top_k: Vec<Histogram>,
+    max_bits: usize,
+) -> Vec<Histogram> {
+    let mut final_hists: Vec<Histogram> = Vec::new();
+    let mut length = top_k[0].bits.len();
+    while !top_k.is_empty() && length < max_bits {
+        length += 1;
+        
+        let hists = top_k.par_iter().map(|hist| {
+            let mut new_hists: Vec<Histogram> = Vec::new();
+            for bit in 0..block_size {
+                if hist.bits.contains(&bit){
+                    continue;
+                }
+                let mut new_bits = hist.bits.clone();
+                new_bits.push(bit);
+                new_bits.sort();
+
+                let new_hist = Histogram::get_hist(&new_bits.to_vec(), data);
+
+                new_hists.push(new_hist);
+            }
+
+            new_hists.sort_unstable_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
+            new_hists
+        }).collect::<Vec<_>>();
+        let mut new_top: Vec<Histogram> = Vec::new();
+        for hs in hists {
+            for h in hs{
+                if !new_top.iter().any(|x| x.bits == h.bits) {
+                    new_top.push(h);
+                    break;
+                }
+            }
+        }
+        top_k = new_top;
+    }
+
+    final_hists.extend(top_k);
+    final_hists
+}
+

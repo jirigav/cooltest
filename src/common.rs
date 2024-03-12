@@ -26,7 +26,7 @@ pub(crate) struct Args {
 
     /// Number of histograms combined in second step. 
     #[arg(short, long, default_value_t = 1)]
-    pub(crate) n: usize,
+    pub(crate) max_bits: usize,
 
     /// Significance level
     #[arg(short, long, default_value_t = 0.0001)]
@@ -38,7 +38,7 @@ pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
 
     for (i, b) in bits.iter().enumerate() {
         if bit_value_in_block(*b, block) {
-            result += 2_usize.pow(i as u32);
+            result += 1<<i;
         }
     }
     result
@@ -101,7 +101,7 @@ pub(crate) fn prepare_data(
 
 
 /// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
-pub(crate) fn transform_data2(data: &Vec<Vec<u8>>) -> Data {
+pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
     let mut result = Vec::new();
     let block_size = data[0].len() * 8;
     for blocks in data.chunks(128) {

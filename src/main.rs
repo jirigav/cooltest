@@ -8,7 +8,8 @@ use common::prepare_data;
 use std::time::Instant;
 
 fn print_results(p_value: f64, z_score: f64, alpha: f64) {
-    println!("---------------------------------------------------");
+    println!("----------------------------------------------------------------------");
+    println!("RESULTS:");
     println!("z-score: {z_score}");
     println!("p-value: {p_value:.0e}");
     if p_value >= alpha {
@@ -34,7 +35,7 @@ fn run_bottomup(args: Args) {
         args.block,
         args.deg,
         args.k,
-        args.n
+        args.max_bits
     );
     println!("training finished in {:?}", start.elapsed());
 
