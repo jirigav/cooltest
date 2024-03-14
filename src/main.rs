@@ -24,10 +24,7 @@ fn print_results(p_value: f64, z_score: f64, alpha: f64) {
 }
 
 fn run_bottomup(args: Args) {
-    let (training_data, testing_data) = prepare_data(
-        &args.data_source,
-        args.block,
-    );
+    let (training_data, testing_data) = prepare_data(&args.data_source, args.block);
 
     let start = Instant::now();
     let hist = bottomup(
@@ -35,7 +32,8 @@ fn run_bottomup(args: Args) {
         args.block,
         args.deg,
         args.k,
-        args.max_bits
+        args.max_bits,
+        args.threads,
     );
     println!("training finished in {:?}", start.elapsed());
 
