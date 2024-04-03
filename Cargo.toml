@@ -10,4 +10,4 @@ rand="0.8"
 rayon="1.7"
 clap = { version = "4.3", features = ["derive"] }
 itertools="0.11"
-pyo3="0.19"
+pyo3={ version = "0.19", features = ["auto-initialize"] }
