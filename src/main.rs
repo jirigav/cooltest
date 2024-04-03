@@ -7,7 +7,6 @@ use clap::Parser;
 use common::prepare_data;
 use std::time::Instant;
 
-
 fn print_results(p_value: f64, z_score: f64, alpha: f64) {
     println!("----------------------------------------------------------------------");
     println!("RESULTS:");
