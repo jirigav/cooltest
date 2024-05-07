@@ -30,8 +30,8 @@ fn run_bottomup(args: Args) {
     let hist = bottomup(
         &training_data,
         args.block,
-        args.deg,
         args.k,
+        args.top,
         args.max_bits,
         args.threads,
     );

@@ -21,11 +21,11 @@ pub(crate) struct Args {
 
     /// Number of bits in histograms in brute-force search.
     #[arg(short, long, default_value_t = 2)]
-    pub(crate) deg: usize,
+    pub(crate) k: usize,
 
     /// Number of best histograms taken for the second step.
     #[arg(short, long, default_value_t = 1)]
-    pub(crate) k: usize,
+    pub(crate) top: usize,
 
     /// Number of histograms combined in second step.
     #[arg(short, long, default_value_t = 1)]
@@ -52,7 +52,7 @@ pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
 }
 
 pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
-    let (byte_index, offset) = (bit / 8, bit % 8);
+    let (byte_index, offset) = (bit / 8, 7 - (bit % 8));
     ((block[byte_index] >> offset) & 1) == 1
 }
 
@@ -125,7 +125,7 @@ pub(crate) fn _multi_eval2(bits: &[usize], data: &Data, t: &mut Duration) -> usi
         if i == data.data[0].len() {
             break;
         }
-        let mut result = vec![u128::MAX; l as usize];
+        let mut result = vec![u128::MAX; l];
         for b in bits.iter() {
             result = result
                 .iter()

@@ -186,7 +186,6 @@ fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hist
     let mut bins = vec![0; 2_usize.pow(deg as u32)];
     for bits in (0..block_size).combinations(deg) {
         compute_bins(&bits, data, deg, &hists, &mut bins, block_size, &mut t);
-
         let hist = Histogram::from_bins(bits, &bins);
         best_hists.push(hist);
         best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
