@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use itertools::Itertools;
 use rayon::iter::*;
 
@@ -73,7 +71,7 @@ impl Histogram {
         }
     }
 
-    pub(crate) fn evaluate(&self, data: &[Vec<u8>]) -> usize {
+    pub(crate) fn evaluate(&self, data: &[Vec<u8>]) -> (usize, Vec<usize>) {
         let mut hist2 = vec![0; 2_usize.pow(self.bits.len() as u32)];
         for block in data {
             hist2[bits_block_eval(&self.bits, block)] += 1;
@@ -82,7 +80,7 @@ impl Histogram {
         for k in 0..self.best_division {
             count += hist2[self.sorted_indices[k]];
         }
-        count
+        (count, hist2)
     }
 }
 
@@ -137,9 +135,8 @@ fn compute_bins(
     hists: &[Vec<usize>],
     bins: &mut [usize],
     block_size: usize,
-    t: &mut Duration,
 ) {
-    let ones = multi_eval(bits, data, t);
+    let ones = multi_eval(bits, data);
 
     let value = 2_usize.pow(d as u32) - 1;
 
@@ -163,11 +160,9 @@ fn compute_bins(
 }
 
 fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Histogram> {
-    let mut t = Duration::from_micros(0);
-
     let mut hists: Vec<Vec<usize>> = Vec::new();
     for i in 0..block_size {
-        let ones = multi_eval(&[i], data, &mut t);
+        let ones = multi_eval(&[i], data);
         hists.push(vec![(data._num_of_blocks as usize) - ones, ones])
     }
 
@@ -176,7 +171,7 @@ fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hist
 
         for bits in (0..block_size).combinations(d) {
             let mut bins = vec![0; 2_usize.pow(d as u32)];
-            compute_bins(&bits, data, d, &hists, &mut bins, block_size, &mut t);
+            compute_bins(&bits, data, d, &hists, &mut bins, block_size);
 
             new_hists.push(bins);
         }
@@ -185,13 +180,13 @@ fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hist
     let mut best_hists = vec![Histogram::from_bins(vec![0], &[1, 1]); k];
     let mut bins = vec![0; 2_usize.pow(deg as u32)];
     for bits in (0..block_size).combinations(deg) {
-        compute_bins(&bits, data, deg, &hists, &mut bins, block_size, &mut t);
+        compute_bins(&bits, data, deg, &hists, &mut bins, block_size);
         let hist = Histogram::from_bins(bits, &bins);
         best_hists.push(hist);
         best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
         best_hists.pop();
     }
-    println!("Stream operations: {:?}", t);
+
     best_hists
 }
 
@@ -219,18 +214,14 @@ pub(crate) fn bottomup(
     max_bits: usize,
     threads: usize,
 ) -> Histogram {
-    let mut start = Instant::now();
     let mut top_k = if threads == 0 {
         brute_force(&transform_data(data), block_size, base_degree, k)
     } else {
         brute_force_threads(&transform_data(data), block_size, base_degree, k, threads)
     };
-    println!("Brute-force finished in {:?}", start.elapsed());
 
     if max_bits > base_degree {
-        start = Instant::now();
         top_k = phase_two(data, block_size, top_k, max_bits);
-        println!("Heuristic search finished in {:?}", start.elapsed());
     }
 
     let res = top_k[0].clone();

@@ -1,9 +1,6 @@
 use clap::Parser;
 use pyo3::prelude::*;
-use std::{
-    fs,
-    time::{Duration, Instant},
-};
+use std::fs;
 
 pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
@@ -63,8 +60,7 @@ pub(crate) struct Data {
     pub(crate) _num_of_blocks: u32,
 }
 
-pub(crate) fn multi_eval(bits: &[usize], data: &Data, t: &mut Duration) -> usize {
-    let start = Instant::now();
+pub(crate) fn multi_eval(bits: &[usize], data: &Data) -> usize {
     let mut result = vec![u128::MAX; data.data[0].len()];
 
     for b in bits.iter() {
@@ -79,7 +75,6 @@ pub(crate) fn multi_eval(bits: &[usize], data: &Data, t: &mut Duration) -> usize
         .iter()
         .map(|x| x.count_ones() as usize)
         .sum::<usize>();
-    *t += start.elapsed();
     r
 }
 

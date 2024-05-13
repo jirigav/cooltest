@@ -3,15 +3,41 @@ mod common;
 
 use crate::bottomup::bottomup;
 use crate::common::{p_value, z_score, Args};
+use bottomup::Histogram;
 use clap::Parser;
 use common::prepare_data;
 use std::time::Instant;
 
-fn print_results(p_value: f64, z_score: f64, alpha: f64) {
+fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: Histogram, bins: Vec<usize>) {
     println!("----------------------------------------------------------------------");
     println!("RESULTS:");
-    println!("z-score: {z_score}");
-    println!("p-value: {p_value:.0e}");
+    let m = bins.iter().max().unwrap();
+    let unit = (m/50).max(1);
+    for (i, ind) in hist.sorted_indices.iter().enumerate(){
+        for x in &hist.bits{
+            print!("x{} ", x);
+        }
+        let mut j = *ind;
+        print!("| [");
+        for _ in 0..hist.bits.len(){
+            print!("{}", j%2);
+            j /= 2;
+        }
+        print!("] | ");
+        for _ in 0..bins[*ind]/unit{
+            print!("∎");
+        }
+        println!();
+        if i == (hist.best_division-1) {
+            for _ in 0..80 {
+                print!("-");
+            }
+            println!();
+        }
+    }
+    println!();
+    println!("Z-score: {z_score}");
+    println!("P-value: {p_value:.0e}");
     if p_value >= alpha {
         println!(
             "As the p-value >= alpha {alpha:.0e}, the randomness hypothesis cannot be rejected."
@@ -37,7 +63,7 @@ fn run_bottomup(args: Args) {
     );
     println!("training finished in {:?}", start.elapsed());
 
-    let count = hist.evaluate(&testing_data);
+    let (count, bins) = hist.evaluate(&testing_data);
     let prob = 2.0_f64.powf(-(hist.bits.len() as f64));
     let z = z_score(
         testing_data.len(),
@@ -52,7 +78,10 @@ fn run_bottomup(args: Args) {
         ),
         z,
         args.alpha,
-    )
+        hist, 
+        bins
+    );
+    
 }
 
 fn main() {
