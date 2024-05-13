@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use itertools::Itertools;
 use rayon::iter::*;
 
-use crate::common::{_multi_eval, bits_block_eval, transform_data, z_score, Data};
+use crate::common::{multi_eval, bits_block_eval, transform_data, z_score, Data};
 
 #[derive(Clone)]
 pub(crate) struct Histogram {
@@ -139,7 +139,7 @@ fn compute_bins(
     block_size: usize,
     t: &mut Duration,
 ) {
-    let ones = _multi_eval(bits, data, t);
+    let ones = multi_eval(bits, data, t);
 
     let value = 2_usize.pow(d as u32) - 1;
 
@@ -167,7 +167,7 @@ fn brute_force(data: &Data, block_size: usize, deg: usize, k: usize) -> Vec<Hist
 
     let mut hists: Vec<Vec<usize>> = Vec::new();
     for i in 0..block_size {
-        let ones = _multi_eval(&[i], data, &mut t);
+        let ones = multi_eval(&[i], data, &mut t);
         hists.push(vec![(data._num_of_blocks as usize) - ones, ones])
     }
 

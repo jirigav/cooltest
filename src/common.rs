@@ -63,37 +63,7 @@ pub(crate) struct Data {
     pub(crate) _num_of_blocks: u32,
 }
 
-fn _rec_eval<'a>(bits: &[usize], data: &'a Data) -> Box<dyn Iterator<Item = u128> + 'a> {
-    if bits.len() == 1 {
-        Box::new(data.data[bits[0]].iter().copied())
-    } else if bits.len() == 2 {
-        Box::new(
-            data.data[bits[0]]
-                .iter()
-                .zip(data.data[bits[1]].iter())
-                .map(|(a, b)| a & b),
-        )
-    } else {
-        let (bits1, bits2) = bits.split_at(bits.len() / 2);
-        Box::new(
-            _rec_eval(bits1, data)
-                .zip(_rec_eval(bits2, data))
-                .map(|(a, b)| a & b),
-        )
-    }
-}
-
-// lower the number of stream combinations
-pub(crate) fn _multi_eval3(bits: &[usize], data: &Data, t: &mut Duration) -> usize {
-    let start = Instant::now();
-    let r = _rec_eval(bits, data)
-        .map(|x| x.count_ones() as usize)
-        .sum::<usize>();
-    *t += start.elapsed();
-    r
-}
-
-pub(crate) fn _multi_eval(bits: &[usize], data: &Data, t: &mut Duration) -> usize {
+pub(crate) fn multi_eval(bits: &[usize], data: &Data, t: &mut Duration) -> usize {
     let start = Instant::now();
     let mut result = vec![u128::MAX; data.data[0].len()];
 
@@ -109,37 +79,6 @@ pub(crate) fn _multi_eval(bits: &[usize], data: &Data, t: &mut Duration) -> usiz
         .iter()
         .map(|x| x.count_ones() as usize)
         .sum::<usize>();
-    *t += start.elapsed();
-    r
-}
-
-// try to fit in cache
-pub(crate) fn _multi_eval2(bits: &[usize], data: &Data, t: &mut Duration) -> usize {
-    let start = Instant::now();
-
-    let mut r = 0;
-    let mut i = 0;
-
-    loop {
-        let l = std::cmp::min(data.data[0].len() - i, 16000);
-        if i == data.data[0].len() {
-            break;
-        }
-        let mut result = vec![u128::MAX; l];
-        for b in bits.iter() {
-            result = result
-                .iter()
-                .zip(&data.data[*b][i..(i + l)])
-                .map(|(a, b)| a & b)
-                .collect();
-        }
-        i += l;
-        r += result
-            .iter()
-            .map(|x| x.count_ones() as usize)
-            .sum::<usize>();
-    }
-
     *t += start.elapsed();
     r
 }
