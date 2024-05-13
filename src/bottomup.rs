@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use itertools::Itertools;
 use rayon::iter::*;
 
-use crate::common::{multi_eval, bits_block_eval, transform_data, z_score, Data};
+use crate::common::{bits_block_eval, multi_eval, transform_data, z_score, Data};
 
 #[derive(Clone)]
 pub(crate) struct Histogram {
@@ -288,57 +288,7 @@ fn phase_two(
     final_hists
 }
 
-fn _rec_eval<'a>(
-    bits: &[(usize, &usize)],
-    data: &'a Data,
-    neg_data: &'a Data,
-    negs: usize,
-) -> Box<dyn Iterator<Item = u128> + 'a> {
-    if bits.len() == 1 {
-        if negs >> bits[0].0 & 1 == 1 {
-            Box::new(data.data[*bits[0].1].iter().copied())
-        } else {
-            Box::new(neg_data.data[*bits[0].1].iter().copied())
-        }
-    } else if bits.len() == 2 {
-        let iter1 = if negs >> bits[0].0 & 1 == 1 {
-            data.data[*bits[0].1].iter()
-        } else {
-            neg_data.data[*bits[0].1].iter()
-        };
-        let iter2 = if negs >> bits[1].0 & 1 == 1 {
-            data.data[*bits[1].1].iter()
-        } else {
-            neg_data.data[*bits[1].1].iter()
-        };
-        Box::new(iter1.zip(iter2).map(|(a, b)| a & b))
-    } else {
-        let (bits1, bits2) = bits.split_at(bits.len() / 2);
-        Box::new(
-            _rec_eval(bits1, data, neg_data, negs)
-                .zip(_rec_eval(bits2, data, neg_data, negs))
-                .map(|(a, b)| a & b),
-        )
-    }
-}
-
-pub(crate) fn _multi_eval_neg_rec(
-    bits: &[usize],
-    data: &Data,
-    neg_data: &Data,
-    negs: usize,
-) -> usize {
-    _rec_eval(
-        &bits.iter().enumerate().collect::<Vec<_>>(),
-        data,
-        neg_data,
-        negs,
-    )
-    .map(|x| x.count_ones() as usize)
-    .sum::<usize>()
-}
-
-pub(crate) fn _multi_eval_neg(
+pub(crate) fn multi_eval_neg(
     bits: &[usize],
     data: &Data,
     neg_data: &Data,
@@ -404,7 +354,7 @@ fn brute_force_threads(
             for bits in combs.step_by(threads) {
                 let mut bins = vec![0; 2_usize.pow(deg as u32)];
                 for (i, bin) in bins.iter_mut().enumerate() {
-                    *bin = _multi_eval_neg_rec(&bits, data, &neg_data, i);
+                    *bin = multi_eval_neg(&bits, data, &neg_data, i);
                 }
                 let new_hist = Histogram::from_bins(bits, &bins);
                 best_hists.push(new_hist);
