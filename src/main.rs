@@ -12,23 +12,23 @@ fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: Histogram, bins: 
     println!("----------------------------------------------------------------------");
     println!("RESULTS:");
     let m = bins.iter().max().unwrap();
-    let unit = (m/50).max(1);
-    for (i, ind) in hist.sorted_indices.iter().enumerate(){
-        for x in &hist.bits{
+    let unit = (m / 50).max(1);
+    for (i, ind) in hist.sorted_indices.iter().enumerate() {
+        for x in &hist.bits {
             print!("x{} ", x);
         }
         let mut j = *ind;
         print!("| [");
-        for _ in 0..hist.bits.len(){
-            print!("{}", j%2);
+        for _ in 0..hist.bits.len() {
+            print!("{}", j % 2);
             j /= 2;
         }
         print!("] | ");
-        for _ in 0..bins[*ind]/unit{
+        for _ in 0..bins[*ind] / unit {
             print!("∎");
         }
         println!();
-        if i == (hist.best_division-1) {
+        if i == (hist.best_division - 1) {
             for _ in 0..80 {
                 print!("-");
             }
@@ -78,10 +78,9 @@ fn run_bottomup(args: Args) {
         ),
         z,
         args.alpha,
-        hist, 
-        bins
+        hist,
+        bins,
     );
-    
 }
 
 fn main() {
