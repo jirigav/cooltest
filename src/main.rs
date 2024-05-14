@@ -10,7 +10,9 @@ use std::time::Instant;
 
 fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: Histogram, bins: Vec<usize>) {
     println!("----------------------------------------------------------------------");
-    println!("RESULTS:");
+    println!("RESULTS:\n");
+
+    println!("Histogram(the discovered Boolean function returns 1 for values before the separator and 0 for values after the separator.):\n");
     let m = bins.iter().max().unwrap();
     let unit = (m / 50).max(1);
     for (i, ind) in hist.sorted_indices.iter().enumerate() {
@@ -30,7 +32,7 @@ fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: Histogram, bins: 
         println!();
         if i == (hist.best_division - 1) {
             for _ in 0..80 {
-                print!("-");
+                print!("—");
             }
             println!();
         }
