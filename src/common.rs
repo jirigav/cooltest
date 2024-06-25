@@ -53,6 +53,7 @@ pub(crate) enum SubCommand {
         #[arg(short, long)]
         dis_path: String,
     },
+    Autotest {}
 }
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
     let mut result = 0;
