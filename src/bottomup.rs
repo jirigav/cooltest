@@ -2,7 +2,7 @@ use itertools::Itertools;
 use rayon::iter::*;
 
 use crate::common::{bits_block_eval, multi_eval, transform_data, z_score, Data};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Histogram {
