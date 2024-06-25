@@ -139,12 +139,10 @@ pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
 
 pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
     Python::with_gil(|py| {
-        let scipy = PyModule::import(py, "scipy").unwrap();
-        let result: f64 = scipy
-            .getattr("stats")
-            .unwrap()
+        let scipy_stats = PyModule::import(py, "scipy.stats").expect("SciPy not installed! Use `pip install scipy` to install the library.");
+        let result: f64 = scipy_stats
             .getattr("binomtest")
-            .unwrap()
+            .expect("Scipy binomtest not found! Make sure that your version os SciPy is >=1.7.0.")
             .call1((positive, sample_size, probability, "two-sided"))
             .unwrap()
             .getattr("pvalue")
