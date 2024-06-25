@@ -1,12 +1,13 @@
 use clap::Parser;
 use pyo3::prelude::*;
 use std::fs;
+use serde::{Serialize, Deserialize};
 
 pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Serialize, Deserialize, Clone)]
 #[command(version)]
 pub(crate) struct Args {
     /// Path of file with input data.
@@ -35,6 +36,10 @@ pub(crate) struct Args {
     /// Number of threads for multi-thread run. 0 means that efficient single thread implementation is used.
     #[arg(short, long, default_value_t = 0)]
     pub(crate) threads: usize,
+
+    /// Path where json output should be stored. If no path provided, json output is not stored. 
+    #[arg(short, long)]
+    pub(crate) json: Option<String>,
 }
 
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {

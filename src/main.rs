@@ -6,9 +6,12 @@ use crate::common::{p_value, z_score, Args};
 use bottomup::Histogram;
 use clap::Parser;
 use common::prepare_data;
+use std::fs::File;
+use std::io::Write;
 use std::time::Instant;
+use serde_json::json;
 
-fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: Histogram, bins: Vec<usize>) {
+fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: &Histogram, bins: Vec<usize>) {
     println!("----------------------------------------------------------------------");
     println!("RESULTS:\n");
 
@@ -72,17 +75,31 @@ fn run_bottomup(args: Args) {
         count,
         prob * (hist.best_division as f64),
     );
+    let p_val = p_value(
+        count,
+        testing_data.len(),
+        prob * (hist.best_division as f64),
+    );
     print_results(
-        p_value(
-            count,
-            testing_data.len(),
-            prob * (hist.best_division as f64),
-        ),
+        p_val,
         z,
         args.alpha,
-        hist,
+        &hist,
         bins,
     );
+
+    if let Some(path) = args.json.clone() {
+        let mut file = File::create(&path).expect(&format!("File {} couldn't be created", path));
+
+        let output = json!({
+            "args": args,
+            "dis": hist,
+            "result": if p_val < args.alpha {"random"} else {"non-random"},
+            "p-value": p_val
+        });
+        
+        file.write_all(serde_json::to_string_pretty(&output).expect("Failed to produce json!").as_bytes()).unwrap();
+    }
 }
 
 fn main() {
