@@ -5,10 +5,13 @@ use crate::bottomup::bottomup;
 use crate::common::{p_value, z_score, Args};
 use bottomup::Histogram;
 use clap::Parser;
-use common::prepare_data;
+use common::{prepare_data, SubCommand};
+use serde_json::json;
+use std::fs::{self, File};
+use std::io::Write;
 use std::time::Instant;
 
-fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: Histogram, bins: Vec<usize>) {
+fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: &Histogram, bins: Vec<usize>) {
     println!("----------------------------------------------------------------------");
     println!("RESULTS:\n");
 
@@ -51,8 +54,44 @@ fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: Histogram, bins: 
     }
 }
 
+fn results(hist: Histogram, testing_data: &[Vec<u8>], args: Args) {
+    let (count, bins) = hist.evaluate(testing_data);
+    let prob = 2.0_f64.powf(-(hist.bits.len() as f64));
+    let z = z_score(
+        testing_data.len(),
+        count,
+        prob * (hist.best_division as f64),
+    );
+    let p_val = p_value(
+        count,
+        testing_data.len(),
+        prob * (hist.best_division as f64),
+    );
+    print_results(p_val, z, args.alpha, &hist, bins);
+
+    if let Some(path) = args.json.clone() {
+        let mut file =
+            File::create(&path).unwrap_or_else(|_| panic!("File {} couldn't be created", path));
+
+        let output = json!({
+            "args": args,
+            "dis": hist,
+            "result": if p_val < args.alpha {"random"} else {"non-random"},
+            "p-value": p_val
+        });
+
+        file.write_all(
+            serde_json::to_string_pretty(&output)
+                .expect("Failed to produce json!")
+                .as_bytes(),
+        )
+        .unwrap();
+    }
+}
+
 fn run_bottomup(args: Args) {
-    let (training_data, testing_data) = prepare_data(&args.data_source, args.block);
+    let (training_data, testing_data) = prepare_data(&args.data_source, args.block, true);
+    let testing_data = testing_data.unwrap();
 
     let start = Instant::now();
     let hist = bottomup(
@@ -65,29 +104,22 @@ fn run_bottomup(args: Args) {
     );
     println!("training finished in {:?}", start.elapsed());
 
-    let (count, bins) = hist.evaluate(&testing_data);
-    let prob = 2.0_f64.powf(-(hist.bits.len() as f64));
-    let z = z_score(
-        testing_data.len(),
-        count,
-        prob * (hist.best_division as f64),
-    );
-    print_results(
-        p_value(
-            count,
-            testing_data.len(),
-            prob * (hist.best_division as f64),
-        ),
-        z,
-        args.alpha,
-        hist,
-        bins,
-    );
+    results(hist, &testing_data, args)
 }
 
 fn main() {
     let args = Args::parse();
     println!("\n{args:?}\n");
 
-    run_bottomup(args)
+    match args.subcommand.clone() {
+        Some(SubCommand::Evaluate { dis_path }) => {
+            let contents = fs::read_to_string(&dis_path)
+                .unwrap_or_else(|_| panic!("Failed to read contents of {}", &dis_path));
+            let hist: Histogram =
+                serde_json::from_str(&contents).expect("Invalid distinguisher json!");
+            let (testing_data, _) = prepare_data(&args.data_source, args.block, false);
+            results(hist, &testing_data, args)
+        }
+        None => run_bottomup(args),
+    }
 }

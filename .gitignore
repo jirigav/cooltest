@@ -1,3 +1,5 @@
 /target
 /data/*
 config
+/.vscode
+

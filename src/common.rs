@@ -1,12 +1,13 @@
 use clap::Parser;
 use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::fs;
 
 pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Serialize, Deserialize, Clone)]
 #[command(version)]
 pub(crate) struct Args {
     /// Path of file with input data.
@@ -35,8 +36,24 @@ pub(crate) struct Args {
     /// Number of threads for multi-thread run. 0 means that efficient single thread implementation is used.
     #[arg(short, long, default_value_t = 0)]
     pub(crate) threads: usize,
+
+    /// Path where json output should be stored. If no path provided, json output is not stored.
+    #[arg(short, long)]
+    pub(crate) json: Option<String>,
+
+    #[clap(subcommand)]
+    pub subcommand: Option<SubCommand>,
 }
 
+#[derive(Parser, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub(crate) enum SubCommand {
+    /// Evaluate a given distinguisher on given data and report p-value.
+    Evaluate {
+        /// Path of file with distinguisher which should be evaluated.
+        #[arg(short, long)]
+        dis_path: String,
+    },
+}
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
     let mut result = 0;
 
@@ -92,12 +109,19 @@ fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
     data
 }
 
-pub(crate) fn prepare_data(data_source: &str, block_size: usize) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
+pub(crate) fn prepare_data(
+    data_source: &str,
+    block_size: usize,
+    training_data: bool,
+) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>) {
     let data = load_data(data_source, block_size);
+    if !training_data {
+        (data, None)
+    } else {
+        let (tr_data, testing_data) = data.split_at(data.len() / 2);
 
-    let (tr_data, testing_data) = data.split_at(data.len() / 2);
-
-    (tr_data.to_vec(), testing_data.to_vec())
+        (tr_data.to_vec(), Some(testing_data.to_vec()))
+    }
 }
 
 /// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
@@ -139,12 +163,11 @@ pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
 
 pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
     Python::with_gil(|py| {
-        let scipy = PyModule::import(py, "scipy").unwrap();
-        let result: f64 = scipy
-            .getattr("stats")
-            .unwrap()
+        let scipy_stats = PyModule::import(py, "scipy.stats")
+            .expect("SciPy not installed! Use `pip install scipy` to install the library.");
+        let result: f64 = scipy_stats
             .getattr("binomtest")
-            .unwrap()
+            .expect("Scipy binomtest not found! Make sure that your version os SciPy is >=1.7.0.")
             .call1((positive, sample_size, probability, "two-sided"))
             .unwrap()
             .getattr("pvalue")

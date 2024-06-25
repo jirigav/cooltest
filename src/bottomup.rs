@@ -2,8 +2,9 @@ use itertools::Itertools;
 use rayon::iter::*;
 
 use crate::common::{bits_block_eval, multi_eval, transform_data, z_score, Data};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Histogram {
     pub(crate) bits: Vec<usize>,
     pub(crate) sorted_indices: Vec<usize>,
