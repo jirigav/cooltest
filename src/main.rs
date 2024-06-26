@@ -35,6 +35,10 @@ fn main() {
     let mut args = Args::parse();
     println!("\n{args:?}\n");
 
+    if args.block > 600 {
+        println!("With block size {}, the computation can take long time, consider using smaller block size.", args.block);
+    }
+
     match args.subcommand.clone() {
         Some(SubCommand::Evaluate { dis_path }) => {
             let contents = fs::read_to_string(&dis_path)

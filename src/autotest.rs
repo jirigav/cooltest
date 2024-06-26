@@ -49,8 +49,11 @@ pub(crate) fn autotest(mut args: Args) {
     println!("training finished in {:?}", start.elapsed());
 
     if tested_cases > 1 {
-        let new_alpha = args.alpha/(tested_cases as f64);
-        println!("Adjusting significance level based on the number of tests from {} to {}", args.alpha, new_alpha);
+        let new_alpha = args.alpha / (tested_cases as f64);
+        println!(
+            "Adjusting significance level based on the number of tests from {} to {}",
+            args.alpha, new_alpha
+        );
         args.alpha = new_alpha;
     }
 
