@@ -6,11 +6,10 @@ use std::time::Instant;
 const GB: usize = 1000000000;
 const MB: usize = 1000000;
 
-
 fn choose_k(block_size: usize, data_size: usize) -> usize {
-    if data_size <= 10*MB && block_size < 128{
+    if data_size <= 10 * MB && block_size < 128 {
         4
-    } else if data_size < 2*GB && block_size < 256{
+    } else if data_size < 2 * GB && block_size < 256 {
         3
     } else {
         2
