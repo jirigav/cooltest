@@ -32,7 +32,7 @@ fn run_bottomup(args: Args) {
 }
 
 fn main() {
-    let args = Args::parse();
+    let mut args = Args::parse();
     println!("\n{args:?}\n");
 
     match args.subcommand.clone() {
@@ -41,7 +41,9 @@ fn main() {
                 .unwrap_or_else(|_| panic!("Failed to read contents of {}", &dis_path));
             let hist: Histogram =
                 serde_json::from_str(&contents).expect("Invalid distinguisher json!");
-            let (testing_data, _) = prepare_data(&args.data_source, args.block, false);
+            args.block = hist.block_size;
+            args.k = hist.bits.len();
+            let (testing_data, _) = prepare_data(&args.data_source, hist.block_size, false);
             results(hist, &testing_data, args)
         }
         Some(SubCommand::Autotest {}) => autotest(args),

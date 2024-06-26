@@ -26,7 +26,8 @@ pub(crate) fn autotest(args: Args) {
     );
     let testing_data2;
     if args.block <= 256 {
-        let (training_data, testing_data_opt2) = prepare_data(&args.data_source, 2*args.block, true);
+        let (training_data, testing_data_opt2) =
+            prepare_data(&args.data_source, 2 * args.block, true);
         testing_data2 = testing_data_opt2.unwrap();
         k = choose_k(2 * args.block, data_size);
         let hist2 = bottomup(

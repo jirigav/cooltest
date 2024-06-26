@@ -9,7 +9,9 @@ pub(crate) struct Histogram {
     pub(crate) bits: Vec<usize>,
     pub(crate) sorted_indices: Vec<usize>,
     pub(crate) best_division: usize,
+    #[serde(skip_serializing, default)]
     pub(crate) z_score: f64,
+    pub(crate) block_size: usize,
 }
 
 impl Histogram {
@@ -42,10 +44,11 @@ impl Histogram {
             sorted_indices: indices,
             best_division: best_i,
             z_score: max_z,
+            block_size: data[0].len(),
         }
     }
 
-    pub(crate) fn from_bins(bits: Vec<usize>, bins: &[usize]) -> Histogram {
+    pub(crate) fn from_bins(bits: Vec<usize>, bins: &[usize], block_size: usize) -> Histogram {
         let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
         indices.sort_by(|a, b| bins[*b].cmp(&bins[*a]));
 
@@ -69,6 +72,7 @@ impl Histogram {
             sorted_indices: indices,
             best_division: best_i,
             z_score: max_z,
+            block_size,
         }
     }
 
@@ -179,11 +183,11 @@ fn brute_force(data: &Data, block_size: usize, k: usize, top: usize) -> Vec<Hist
         hists = new_hists;
     }
     if k > 1 {
-        let mut best_hists = vec![Histogram::from_bins(vec![0], &[1, 1]); top];
+        let mut best_hists = vec![Histogram::from_bins(vec![0], &[1, 1], block_size); top];
         let mut bins = vec![0; 2_usize.pow(k as u32)];
         for bits in (0..block_size).combinations(k) {
             compute_bins(&bits, data, k, &hists, &mut bins, block_size);
-            let hist = Histogram::from_bins(bits, &bins);
+            let hist = Histogram::from_bins(bits, &bins, block_size);
             best_hists.push(hist);
             best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
             best_hists.pop();
@@ -194,7 +198,7 @@ fn brute_force(data: &Data, block_size: usize, k: usize, top: usize) -> Vec<Hist
         let mut best: Vec<_> = hists
             .into_iter()
             .enumerate()
-            .map(|(i, bins)| Histogram::from_bins(bits[i].clone(), &bins))
+            .map(|(i, bins)| Histogram::from_bins(bits[i].clone(), &bins, block_size))
             .collect();
 
         best.sort_by(|a, b| b.z_score.partial_cmp(&a.z_score).unwrap());
@@ -203,7 +207,7 @@ fn brute_force(data: &Data, block_size: usize, k: usize, top: usize) -> Vec<Hist
 }
 
 fn _combine_bins(hists: &[Histogram], n: usize, data: &[Vec<u8>]) -> Histogram {
-    let mut best_hist = Histogram::from_bins(vec![0], &[1, 1]);
+    let mut best_hist = Histogram::from_bins(vec![0], &[1, 1], data[0].len());
     for comb in hists.iter().combinations(n) {
         let mut bits = comb.iter().flat_map(|x| x.bits.clone()).collect_vec();
         bits.sort();
@@ -352,14 +356,14 @@ fn brute_force_threads(
         .map(|i| {
             let combs = (0..block_size).combinations(k).skip(i);
 
-            let mut best_hists = vec![Histogram::from_bins(vec![0], &[1, 1]); top];
+            let mut best_hists = vec![Histogram::from_bins(vec![0], &[1, 1], block_size); top];
 
             for bits in combs.step_by(threads) {
                 let mut bins = vec![0; 2_usize.pow(k as u32)];
                 for (i, bin) in bins.iter_mut().enumerate() {
                     *bin = multi_eval_neg(&bits, data, &neg_data, i);
                 }
-                let new_hist = Histogram::from_bins(bits, &bins);
+                let new_hist = Histogram::from_bins(bits, &bins, block_size);
                 best_hists.push(new_hist);
                 best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
                 best_hists.pop();
