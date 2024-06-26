@@ -14,7 +14,7 @@ pub(crate) struct Args {
     pub(crate) data_source: String,
 
     /// Length of block of data.
-    #[arg(short, long, default_value_t = 128)]
+    #[arg(short, long, default_value_t = 128)] // Changing the default value changes autotest
     pub(crate) block: usize,
 
     /// Number of bits in histograms in brute-force search.
@@ -53,7 +53,7 @@ pub(crate) enum SubCommand {
         #[arg(short, long)]
         dis_path: String,
     },
-    Autotest {}
+    Autotest {},
 }
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
     let mut result = 0;

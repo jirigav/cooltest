@@ -1,7 +1,10 @@
-use std::io::Write;
+use crate::{
+    bottomup::Histogram,
+    common::{p_value, z_score, Args},
+};
 use serde_json::json;
 use std::fs::File;
-use crate::{bottomup::Histogram, common::{p_value, z_score, Args}};
+use std::io::Write;
 
 pub(crate) fn results(hist: Histogram, testing_data: &[Vec<u8>], args: Args) {
     let (count, bins) = hist.evaluate(testing_data);

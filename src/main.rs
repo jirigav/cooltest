@@ -1,15 +1,17 @@
+mod autotest;
 mod bottomup;
 mod common;
 mod results;
 
 use crate::bottomup::bottomup;
 use crate::common::Args;
+use autotest::autotest;
 use bottomup::Histogram;
 use clap::Parser;
 use common::{prepare_data, SubCommand};
+use results::results;
 use std::fs;
 use std::time::Instant;
-use results::results;
 
 fn run_bottomup(args: Args) {
     let (training_data, testing_data) = prepare_data(&args.data_source, args.block, true);
@@ -42,7 +44,7 @@ fn main() {
             let (testing_data, _) = prepare_data(&args.data_source, args.block, false);
             results(hist, &testing_data, args)
         }
-        Some(SubCommand::Autotest {}) => todo!(),
+        Some(SubCommand::Autotest {}) => autotest(args),
         None => run_bottomup(args),
     }
 }
