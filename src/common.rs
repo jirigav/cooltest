@@ -3,10 +3,6 @@ use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
-    ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
-}
-
 #[derive(Parser, Debug, Serialize, Deserialize, Clone)]
 #[command(version)]
 pub(crate) struct Args {
@@ -162,6 +158,10 @@ pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
     }
 }
 
+pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
+    ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
+}
+
 pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
     Python::with_gil(|py| {
         let scipy_stats = PyModule::import(py, "scipy.stats")
@@ -177,4 +177,45 @@ pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> 
             .unwrap();
         result
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use float_cmp::approx_eq;
+
+    #[test]
+    fn test_p_value() {
+        assert!(approx_eq!(f64, p_value(1, 1, 0.0), 0.0));
+        assert!(approx_eq!(f64, p_value(1, 1, 1.0), 1.0));
+        assert!(approx_eq!(f64, p_value(1, 1, 0.5), 1.0));
+        assert!(approx_eq!(f64, p_value(1, 1, 0.25), 0.25));
+        // TODO: more cases
+    }
+
+    #[test]
+    fn test_z_score() {
+        assert!(z_score(1, 1, 1.0).is_nan());
+        // TODO: more cases
+    }
+
+
+    #[test]
+    fn test_bit_value_in_block() {
+        assert_eq!(bit_value_in_block(0, &[2_u8.pow(7)]), true);
+        assert_eq!(bit_value_in_block(0, &[2_u8.pow(6)]), false);
+        assert_eq!(bit_value_in_block(1, &[2_u8.pow(6)]), true);
+        assert_eq!(bit_value_in_block(2, &[2_u8.pow(5)]), true);
+        assert_eq!(bit_value_in_block(3, &[2_u8.pow(4)]), true);
+        assert_eq!(bit_value_in_block(4, &[2_u8.pow(3)]), true);
+        assert_eq!(bit_value_in_block(5, &[2_u8.pow(2)]), true);
+        assert_eq!(bit_value_in_block(6, &[2_u8.pow(1)]), true);
+        assert_eq!(bit_value_in_block(7, &[2_u8.pow(0)]), true);
+
+        assert_eq!(bit_value_in_block(8, &[0, 2_u8.pow(7)]), true);
+        assert_eq!(bit_value_in_block(0, &[0, 2_u8.pow(7)]), false);
+        assert_eq!(bit_value_in_block(8, &[0, 0]), false);
+
+        assert_eq!(bit_value_in_block(103, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]), true);
+    }
 }
