@@ -191,15 +191,35 @@ mod tests {
         assert!(approx_eq!(f64, p_value(1, 1, 0.5), 1.0));
         assert!(approx_eq!(f64, p_value(1, 1, 0.25), 0.25));
         assert!(approx_eq!(f64, p_value(8064, 675, 0.85), 0.0));
-        assert!(approx_eq!(f64, p_value(1245, 872, 0.51), 2.519147904123094e-42));
-        assert!(approx_eq!(f64, p_value(3952, 3009, 0.87), 1.6048354143177452e-76));
-        assert!(approx_eq!(f64, p_value(6395, 1774, 0.32), 1.4633129278540793e-13));
+        assert!(approx_eq!(
+            f64,
+            p_value(1245, 872, 0.51),
+            2.519147904123094e-42
+        ));
+        assert!(approx_eq!(
+            f64,
+            p_value(3952, 3009, 0.87),
+            1.6048354143177452e-76
+        ));
+        assert!(approx_eq!(
+            f64,
+            p_value(6395, 1774, 0.32),
+            1.4633129278540793e-13
+        ));
         assert!(approx_eq!(f64, p_value(7716, 969, 0.76), 0.0));
         assert!(approx_eq!(f64, p_value(4231, 1225, 0.75), 0.0));
         assert!(approx_eq!(f64, p_value(2295, 1187, 0.02), 0.0));
-        assert!(approx_eq!(f64, p_value(2228, 1993, 0.61), 8.219896711580438e-200));
+        assert!(approx_eq!(
+            f64,
+            p_value(2228, 1993, 0.61),
+            8.219896711580438e-200
+        ));
         assert!(approx_eq!(f64, p_value(5936, 4649, 0.97), 0.0));
-        assert!(approx_eq!(f64, p_value(711, 342, 0.2), 5.29655579272766e-63));
+        assert!(approx_eq!(
+            f64,
+            p_value(711, 342, 0.2),
+            5.29655579272766e-63
+        ));
     }
 
     #[test]
