@@ -3,10 +3,6 @@ use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
-    ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
-}
-
 #[derive(Parser, Debug, Serialize, Deserialize, Clone)]
 #[command(version)]
 pub(crate) struct Args {
@@ -71,7 +67,7 @@ pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
     ((block[byte_index] >> offset) & 1) == 1
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub(crate) struct Data {
     pub(crate) data: Vec<Vec<u128>>,
     pub(crate) _mask: u128,
@@ -162,7 +158,11 @@ pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
     }
 }
 
-pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> f64 {
+pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
+    ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
+}
+
+pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> f64 {
     Python::with_gil(|py| {
         let scipy_stats = PyModule::import(py, "scipy.stats")
             .expect("SciPy not installed! Use `pip install scipy` to install the library.");
@@ -177,4 +177,114 @@ pub(crate) fn p_value(positive: usize, sample_size: usize, probability: f64) -> 
             .unwrap();
         result
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use float_cmp::approx_eq;
+
+    #[test]
+    fn test_p_value() {
+        assert!(approx_eq!(f64, p_value(1, 1, 0.0), 0.0));
+        assert!(approx_eq!(f64, p_value(1, 1, 1.0), 1.0));
+        assert!(approx_eq!(f64, p_value(1, 1, 0.5), 1.0));
+        assert!(approx_eq!(f64, p_value(1, 1, 0.25), 0.25));
+        assert!(approx_eq!(f64, p_value(8064, 675, 0.85), 0.0));
+        assert!(approx_eq!(
+            f64,
+            p_value(1245, 872, 0.51),
+            2.519147904123094e-42
+        ));
+        assert!(approx_eq!(
+            f64,
+            p_value(3952, 3009, 0.87),
+            1.6048354143177452e-76
+        ));
+        assert!(approx_eq!(
+            f64,
+            p_value(6395, 1774, 0.32),
+            1.4633129278540793e-13
+        ));
+        assert!(approx_eq!(f64, p_value(7716, 969, 0.76), 0.0));
+        assert!(approx_eq!(f64, p_value(4231, 1225, 0.75), 0.0));
+        assert!(approx_eq!(f64, p_value(2295, 1187, 0.02), 0.0));
+        assert!(approx_eq!(
+            f64,
+            p_value(2228, 1993, 0.61),
+            8.219896711580438e-200
+        ));
+        assert!(approx_eq!(f64, p_value(5936, 4649, 0.97), 0.0));
+        assert!(approx_eq!(
+            f64,
+            p_value(711, 342, 0.2),
+            5.29655579272766e-63
+        ));
+    }
+
+    #[test]
+    fn test_z_score() {
+        assert!(z_score(1, 1, 1.0).is_nan());
+        assert_eq!(z_score(8852, 7609, 0.74), 25.649318571444642);
+        assert_eq!(z_score(8838, 7708, 0.99), -111.35627996866052);
+        assert_eq!(z_score(1040, 1037, 0.34), 44.73494199130066);
+        assert_eq!(z_score(5204, 1855, 0.85), -99.71004790616179);
+        assert_eq!(z_score(8878, 386, 0.19), -35.1917063646087);
+        assert_eq!(z_score(8377, 1181, 0.49), -63.9013271819615);
+        assert_eq!(z_score(9682, 2871, 0.11), 58.65959381857785);
+        assert_eq!(z_score(6615, 343, 0.21), -31.579543090478786);
+        assert_eq!(z_score(4997, 4918, 0.41), 82.52637218309836);
+        assert_eq!(z_score(9609, 1609, 0.28), -24.57254813392147);
+    }
+
+    #[test]
+    fn test_bit_value_in_block() {
+        assert_eq!(bit_value_in_block(0, &[2_u8.pow(7)]), true);
+        assert_eq!(bit_value_in_block(0, &[2_u8.pow(6)]), false);
+        assert_eq!(bit_value_in_block(1, &[2_u8.pow(6)]), true);
+        assert_eq!(bit_value_in_block(2, &[2_u8.pow(5)]), true);
+        assert_eq!(bit_value_in_block(3, &[2_u8.pow(4)]), true);
+        assert_eq!(bit_value_in_block(4, &[2_u8.pow(3)]), true);
+        assert_eq!(bit_value_in_block(5, &[2_u8.pow(2)]), true);
+        assert_eq!(bit_value_in_block(6, &[2_u8.pow(1)]), true);
+        assert_eq!(bit_value_in_block(7, &[2_u8.pow(0)]), true);
+
+        assert_eq!(bit_value_in_block(8, &[0, 2_u8.pow(7)]), true);
+        assert_eq!(bit_value_in_block(0, &[0, 2_u8.pow(7)]), false);
+        assert_eq!(bit_value_in_block(8, &[0, 0]), false);
+
+        assert_eq!(
+            bit_value_in_block(103, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),
+            true
+        );
+    }
+
+    #[test]
+    fn test_transform_data() {
+        assert_eq!(
+            transform_data(&[vec![0, 0], vec![0, 1], vec![1, 0]]),
+            Data {
+                data: vec![
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![4],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    vec![2]
+                ],
+                _mask: 7,
+                _num_of_blocks: 3
+            }
+        )
+    }
 }

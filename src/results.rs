@@ -15,8 +15,8 @@ pub(crate) fn results(hist: Histogram, testing_data: &[Vec<u8>], args: Args) {
         prob * (hist.best_division as f64),
     );
     let p_val = p_value(
-        count,
         testing_data.len(),
+        count,
         prob * (hist.best_division as f64),
     );
     print_results(p_val, z, args.alpha, &hist, bins);

@@ -378,3 +378,35 @@ fn brute_force_threads(
 
     hists
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_choose() {
+        assert_eq!(choose(0, 0), 1);
+        assert_eq!(choose(5, 6), 0);
+        assert_eq!(choose(8, 6), 28);
+        assert_eq!(choose(1, 1), 1);
+        assert_eq!(choose(50, 33), 9847379391150);
+        assert_eq!(choose(14, 9), 2002);
+    }
+
+    #[test]
+    fn test_first_zero_bit() {
+        assert_eq!(first_zero_bit(0b0), 0);
+        assert_eq!(first_zero_bit(0b000010), 0);
+        assert_eq!(first_zero_bit(0b1010101010), 0);
+        assert_eq!(first_zero_bit(0b101), 1);
+        assert_eq!(first_zero_bit(0b1011), 2);
+        assert_eq!(first_zero_bit(0b10111), 3);
+        assert_eq!(first_zero_bit(0b101111), 4);
+        assert_eq!(first_zero_bit(0b1011111), 5);
+        assert_eq!(first_zero_bit(0b10111111), 6);
+        assert_eq!(first_zero_bit(0b101111111), 7);
+        assert_eq!(first_zero_bit(0b1011111111), 8);
+        assert_eq!(first_zero_bit(0b10111111111), 9);
+        assert_eq!(first_zero_bit(0b101111111111), 10);
+    }
+}
