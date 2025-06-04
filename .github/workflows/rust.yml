@@ -34,7 +34,7 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Build with scipy
-      run: cargo bild --verbose --features scipy
+      run: cargo build --verbose --features scipy
     - name: Run tests
       run: cargo test --verbose
     - name: Run tests with scipy
