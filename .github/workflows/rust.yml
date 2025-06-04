@@ -33,8 +33,12 @@ jobs:
 
     - name: Build
       run: cargo build --verbose
+    - name: Build with scipy
+      run: cargo bild --verbose --features scipy
     - name: Run tests
       run: cargo test --verbose
+    - name: Run tests with scipy
+      run: cargo test --verbose --features scipy
     - name: Format
       run: cargo fmt --all -- --check
     - name: Clippy

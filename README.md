@@ -11,8 +11,6 @@ This tool is based on our paper published at [IFIP SEC 2025](https://link.spring
 
 - Rust: Ensure you have Rust installed. If not, install it from [rust-lang.org](https://rust-lang.org).
 
-- Python with SciPy: Python library SciPy (version 1.7.0 or newer) is required.
-
 ## Build Instructions
 
 Clone the repository:
@@ -42,6 +40,18 @@ To view all available options:
 
 ```
 ./target/release/cooltest --help
+```
+
+### Alternative p-value computation
+
+For a more precise p-value computation, the python library SciPy can be used. 
+
+Python library SciPy (version 1.7.0 or newer) is required.
+
+Build with:
+
+```
+cargo build --release --features scipy
 ```
 
 

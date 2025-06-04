@@ -1,7 +1,12 @@
 use clap::Parser;
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
+
+#[cfg(not(feature = "scipy"))]
+use binomtest::*;
+
+#[cfg(feature = "scipy")]
+use pyo3::prelude::*;
 
 #[derive(Parser, Debug, Serialize, Deserialize, Clone)]
 #[command(version)]
@@ -162,6 +167,7 @@ pub(crate) fn z_score(sample_size: usize, positive: usize, p: f64) -> f64 {
     ((positive as f64) - p * (sample_size as f64)) / f64::sqrt(p * (1.0 - p) * (sample_size as f64))
 }
 
+#[cfg(feature = "scipy")]
 pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> f64 {
     Python::with_gil(|py| {
         let scipy_stats = PyModule::import(py, "scipy.stats")
@@ -179,47 +185,43 @@ pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> 
     })
 }
 
+#[cfg(not(feature = "scipy"))]
+pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> f64 {
+    binomial_test(
+        positive as u64,
+        sample_size as u64,
+        probability,
+        Alternative::TwoSided,
+    )
+    .unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use float_cmp::approx_eq;
 
+    fn approx_eq(a: f64, b: f64) -> bool {
+        println!("{}, {}", a, b);
+        return (a - b).abs() <= b * 0.000001;
+    }
+
     #[test]
     fn test_p_value() {
-        assert!(approx_eq!(f64, p_value(1, 1, 0.0), 0.0));
-        assert!(approx_eq!(f64, p_value(1, 1, 1.0), 1.0));
-        assert!(approx_eq!(f64, p_value(1, 1, 0.5), 1.0));
-        assert!(approx_eq!(f64, p_value(1, 1, 0.25), 0.25));
-        assert!(approx_eq!(f64, p_value(8064, 675, 0.85), 0.0));
-        assert!(approx_eq!(
-            f64,
-            p_value(1245, 872, 0.51),
-            2.519147904123094e-42
-        ));
-        assert!(approx_eq!(
-            f64,
-            p_value(3952, 3009, 0.87),
-            1.6048354143177452e-76
-        ));
-        assert!(approx_eq!(
-            f64,
-            p_value(6395, 1774, 0.32),
-            1.4633129278540793e-13
-        ));
-        assert!(approx_eq!(f64, p_value(7716, 969, 0.76), 0.0));
-        assert!(approx_eq!(f64, p_value(4231, 1225, 0.75), 0.0));
-        assert!(approx_eq!(f64, p_value(2295, 1187, 0.02), 0.0));
-        assert!(approx_eq!(
-            f64,
-            p_value(2228, 1993, 0.61),
-            8.219896711580438e-200
-        ));
-        assert!(approx_eq!(f64, p_value(5936, 4649, 0.97), 0.0));
-        assert!(approx_eq!(
-            f64,
-            p_value(711, 342, 0.2),
-            5.29655579272766e-63
-        ));
+        assert!(approx_eq(p_value(1, 1, 0.0), 0.0));
+        assert!(approx_eq(p_value(1, 1, 1.0), 1.0));
+        assert!(approx_eq(p_value(1, 1, 0.5), 1.0));
+        assert!(approx_eq(p_value(1, 1, 0.25), 0.25));
+        assert!(approx_eq(p_value(8064, 675, 0.85), 0.0));
+        assert!(approx_eq(p_value(1245, 872, 0.51), 2.519147904123094e-42));
+        assert!(approx_eq(p_value(3952, 3009, 0.87), 1.6048354143177452e-76));
+        assert!(approx_eq(p_value(6395, 1774, 0.32), 1.4633129278540793e-13));
+        assert!(approx_eq(p_value(7716, 969, 0.76), 0.0));
+        assert!(approx_eq(p_value(4231, 1225, 0.75), 0.0));
+        assert!(approx_eq(p_value(2295, 1187, 0.02), 0.0));
+        assert!(approx_eq(p_value(2228, 1993, 0.61), 8.219896711580438e-200));
+        assert!(approx_eq(p_value(5936, 4649, 0.97), 0.0));
+        assert!(approx_eq(p_value(711, 342, 0.2), 5.29655579272766e-63));
     }
 
     #[test]
