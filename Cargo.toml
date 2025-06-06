@@ -3,7 +3,10 @@ name = "cooltest"
 version = "0.2.0"
 edition = "2021"
 
-
+description = "Randomness testing tool"
+license = "MIT"
+repository = "https://github.com/jirigav/cooltest"
+categories = ["cryptography", "security"]
 
 [dependencies]
 rand = "0.8"

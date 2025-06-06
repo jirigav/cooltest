@@ -199,7 +199,6 @@ pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use float_cmp::approx_eq;
 
     fn approx_eq(a: f64, b: f64) -> bool {
         println!("{}, {}", a, b);
