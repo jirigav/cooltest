@@ -7,11 +7,21 @@ This tool is based on our paper published at [IFIP SEC 2025](https://link.spring
 
 # How to use CoolTest
 
-## Prerequisites
+## Installation
 
-- Rust: Ensure you have Rust installed. If not, install it from [rust-lang.org](https://rust-lang.org).
+### Download binary from latest release
 
-## Build Instructions
+You can download binaries for the latest release from [GitHub releases](https://github.com/jirigav/cooltest/releases). 
+
+### Cargo install
+
+If you have [Rust](https://rust-lang.org) installed on your system, you can install CoolTest with:
+
+```
+cargo install cooltest
+```
+
+### Compile from sources
 
 Clone the repository:
 
@@ -31,7 +41,7 @@ cargo build --release
 After building, you can run CoolTest with default parameters using the following command:
 
 ```
-./target/release/cooltest <file>
+cooltest <file>
 ```
 
 Replace <file> with the path to the binary file you wish to test.
@@ -39,7 +49,7 @@ Replace <file> with the path to the binary file you wish to test.
 To view all available options:
 
 ```
-./target/release/cooltest --help
+cooltest --help
 ```
 
 ### Alternative p-value computation
