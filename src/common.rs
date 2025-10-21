@@ -54,6 +54,8 @@ pub(crate) enum SubCommand {
         #[arg(short, long)]
         dis_path: String,
     },
+
+    /// Test data automatically with multiple configurations, optionally with the use of user-provided block size (-b)
     Autotest {},
 }
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
