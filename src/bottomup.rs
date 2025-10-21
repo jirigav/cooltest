@@ -304,7 +304,7 @@ pub(crate) fn multi_eval_neg(
     let mut result = vec![u128::MAX; data.data[0].len()];
 
     for b in bits.iter() {
-        if negs % 2 == 0 {
+        if negs.is_multiple_of(2) {
             result = result
                 .iter()
                 .zip(&neg_data.data[*b])

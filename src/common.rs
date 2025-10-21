@@ -144,7 +144,7 @@ pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
         }
         result.push(ints);
     }
-    let mask = if data.len() % 128 == 0 {
+    let mask = if data.len().is_multiple_of(128) {
         u128::MAX
     } else {
         2_u128.pow((data.len() % 128) as u32) - 1
