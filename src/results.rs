@@ -28,7 +28,7 @@ pub(crate) fn results(hist: Histogram, testing_data: &[Vec<u8>], args: Args) {
         let output = json!({
             "args": args,
             "dis": hist,
-            "result": if p_val < args.alpha {"random"} else {"non-random"},
+            "result": if p_val >= args.alpha {"random"} else {"non-random"},
             "p-value": p_val
         });
 
