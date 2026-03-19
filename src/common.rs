@@ -1,4 +1,5 @@
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -100,6 +101,7 @@ pub(crate) fn multi_eval(bits: &[usize], data: &Data) -> usize {
 }
 
 fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
+    println!("Loading data from {} with block size {}...", path, block_size);
     let len_of_block_in_bytes = block_size / 8;
     let mut data: Vec<_> = fs::read(path)
         .unwrap()
@@ -110,6 +112,7 @@ fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
         println!("Data are not aligned with block size, dropping last block!");
         data.pop();
     }
+    println!("Data loaded, {} blocks.", data.len());
     data
 }
 
@@ -132,6 +135,15 @@ pub(crate) fn prepare_data(
 pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
     let mut result = Vec::new();
     let block_size = data[0].len() * 8;
+    let total_chunks = data.chunks(128).len() as u64;
+    let pb = ProgressBar::new(total_chunks);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "Transforming training data [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+        )
+        .unwrap()
+        .progress_chars("#>-"),
+    );
     for blocks in data.chunks(128) {
         let mut ints = vec![0_u128; block_size];
 
@@ -143,7 +155,9 @@ pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
             }
         }
         result.push(ints);
+        pb.inc(1);
     }
+    pb.finish_and_clear();
     let mask = if data.len().is_multiple_of(128) {
         u128::MAX
     } else {

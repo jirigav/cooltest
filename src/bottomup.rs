@@ -1,3 +1,4 @@
+use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use rayon::iter::*;
 
@@ -164,7 +165,21 @@ fn compute_bins(
     }
 }
 
+fn new_progress_bar(total: u64, prefix: &str) -> ProgressBar {
+    let pb = ProgressBar::new(total);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{prefix} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+        )
+        .unwrap()
+        .progress_chars("#>-"),
+    );
+    pb.set_prefix(prefix.to_string());
+    pb
+}
+
 fn brute_force(data: &Data, block_size: usize, k: usize, top: usize) -> Vec<Histogram> {
+    println!("Searching for distinguisher...");
     let mut hists: Vec<Vec<usize>> = Vec::new();
     for i in 0..block_size {
         let ones = multi_eval(&[i], data);
@@ -172,6 +187,8 @@ fn brute_force(data: &Data, block_size: usize, k: usize, top: usize) -> Vec<Hist
     }
 
     for d in 2..k {
+        let total = choose(block_size, d) as u64;
+        let pb = new_progress_bar(total, &format!("Distinguisher search (layer {d}/{k})"));
         let mut new_hists = Vec::with_capacity(2_usize.pow(k as u32));
 
         for bits in (0..block_size).combinations(d) {
@@ -179,10 +196,14 @@ fn brute_force(data: &Data, block_size: usize, k: usize, top: usize) -> Vec<Hist
             compute_bins(&bits, data, d, &hists, &mut bins, block_size);
 
             new_hists.push(bins);
+            pb.inc(1);
         }
+        pb.finish_and_clear();
         hists = new_hists;
     }
     if k > 1 {
+        let total = choose(block_size, k) as u64;
+        let pb = new_progress_bar(total, &format!("Distinguisher search (layer {k}/{k})"));
         let mut best_hists = vec![Histogram::from_bins(vec![0], &[1, 1], block_size); top];
         let mut bins = vec![0; 2_usize.pow(k as u32)];
         for bits in (0..block_size).combinations(k) {
@@ -191,7 +212,9 @@ fn brute_force(data: &Data, block_size: usize, k: usize, top: usize) -> Vec<Hist
             best_hists.push(hist);
             best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
             best_hists.pop();
+            pb.inc(1);
         }
+        pb.finish_and_clear();
         best_hists
     } else {
         let bits = (0..block_size).combinations(k).collect_vec();
@@ -255,6 +278,7 @@ fn phase_two(
     let mut length = top_k[0].bits.len();
     while !top_k.is_empty() && length < max_bits {
         length += 1;
+        println!("Phase 2: extending to {length} bits ({} candidates)...", top_k.len());
 
         let hists = top_k
             .par_iter()
@@ -335,6 +359,8 @@ fn brute_force_threads(
     top: usize,
     threads: usize,
 ) -> Vec<Histogram> {
+    println!("Searching for distinguisher...");
+
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build_global()
@@ -350,6 +376,9 @@ fn brute_force_threads(
         let l = x.len();
         x[l - 1] &= data._mask;
     });
+
+    let total = choose(block_size, k) as u64;
+    let pb = new_progress_bar(total, "Distinguisher search (threaded)");
 
     let mut hists: Vec<Histogram> = (0..threads)
         .into_par_iter()
@@ -367,11 +396,13 @@ fn brute_force_threads(
                 best_hists.push(new_hist);
                 best_hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
                 best_hists.pop();
+                pb.inc(1);
             }
             best_hists
         })
         .flatten()
         .collect();
+    pb.finish_and_clear();
     hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
 
     hists = hists.into_iter().take(top).collect();
