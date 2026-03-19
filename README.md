@@ -64,6 +64,43 @@ Build with:
 cargo build --release --features scipy
 ```
 
+# Understanding the results
+
+## Distinguisher
+
+CoolTest iterates througg small subsets of bit positions (e.g., `x3`, `x7`) within each data block and builds a Boolean function over those bits. If statistic of outputs of the function on tested blocks is significantly different from the one expected for random data, the function distinguishes the data from random and is called **distinguisher**.
+
+The distinguisher is reported in the output as, for example:
+```
+Distinguisher: Histogram { bits: [3, 7], sorted indices: [0, 2, 1, 3], best_division: 2, z_score: 5.12 }
+```
+
+- **bits**: the bit positions selected from each block (e.g., bit 3 and bit 7).
+- **z_score**: how far the observed distribution deviates from the expected uniform distribution, in standard deviations. Larger absolute values indicate stronger evidence of non-randomness.
+
+## Histogram output
+
+The histogram in the results visualizes how often each combination of the selected bit values appears in the testing data. For example, with 2 selected bits there are 4 possible combinations (`00`, `01`, `10`, `11`):
+
+```
+x3 x7 | [00] | ∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎
+x3 x7 | [10] | ∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎
+————————————————————————————————————————————————————————————————————————————————
+x3 x7 | [01] | ∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎
+x3 x7 | [11] | ∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎∎
+```
+
+- Each row shows a specific bit-value combination (e.g., `[10]` means bit 3 = 1, bit 7 = 0) and a bar (`∎`) proportional to its frequency.
+- The rows are sorted by frequency (most frequent first).
+- The **separator line** (`———`) divides the histogram into two groups. The distinguisher Boolean function returns **1** for combinations above the separator and **0** for those below. CoolTest chooses this split to maximize the statistical deviation from uniformity.
+
+## P-value and decision
+
+- **P-value**: the probability of observing such a deviation (or more extreme) if the data were truly random. Very small p-values indicate non-randomness.
+- **Alpha** (significance level, default 0.0001): the threshold for rejecting the randomness hypothesis.
+  - If **p-value ≥ alpha**: CoolTest could not find statistically significant non-randomness.
+  - If **p-value < alpha**: the randomness hypothesis is rejected — the data is considered non-random.
+
 
 # License
 CoolTest is released under the MIT license. See [LICENSE](LICENSE) for more information.
