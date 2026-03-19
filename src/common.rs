@@ -35,7 +35,7 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 0.0001)]
     pub(crate) alpha: f64,
 
-    /// Number of threads for multi-thread run. 0 means that efficient single thread implementation is used.
+    /// Number of threads for multi-thread run. 0 uses an optimized single-thread algorithm (recommended for small inputs). 1 uses the multi-thread code with a single thread. Values ≥2 run in parallel.
     #[arg(short, long, default_value_t = 0)]
     pub(crate) threads: usize,
 
