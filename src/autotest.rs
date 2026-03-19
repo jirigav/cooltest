@@ -26,6 +26,7 @@ pub(crate) fn autotest(mut args: Args) {
     let mut k = choose_k(args.block, data_size);
 
     tested_cases += 1;
+    println!("Testing block size {}; k = {} ...", args.block, k);
     let mut hist = bottomup(
         &training_data,
         args.block,
@@ -41,6 +42,7 @@ pub(crate) fn autotest(mut args: Args) {
             prepare_data(&args.data_source, 2 * args.block, true);
         testing_data2 = testing_data_opt2.unwrap();
         k = choose_k(2 * args.block, data_size);
+        println!("Testing block size {}; k = {} ...", 2 * args.block, k);
         let hist2 = bottomup(
             &training_data,
             args.block * 2,
