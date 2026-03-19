@@ -278,7 +278,10 @@ fn phase_two(
     let mut length = top_k[0].bits.len();
     while !top_k.is_empty() && length < max_bits {
         length += 1;
-        println!("Phase 2: extending to {length} bits ({} candidates)...", top_k.len());
+        println!(
+            "Phase 2: extending to {length} bits ({} candidates)...",
+            top_k.len()
+        );
 
         let hists = top_k
             .par_iter()

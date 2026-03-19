@@ -101,7 +101,10 @@ pub(crate) fn multi_eval(bits: &[usize], data: &Data) -> usize {
 }
 
 fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
-    println!("Loading data from {} with block size {}...", path, block_size);
+    println!(
+        "Loading data from {} with block size {}...",
+        path, block_size
+    );
     let len_of_block_in_bytes = block_size / 8;
     let mut data: Vec<_> = fs::read(path)
         .unwrap()
