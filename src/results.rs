@@ -46,8 +46,14 @@ fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: &Histogram, bins:
     println!("RESULTS:\n");
 
     println!("Histogram(the discovered Boolean function returns 1 for values before the separator and 0 for values after the separator.):\n");
-    let m = bins.iter().max().unwrap();
-    let unit = (m / 50).max(1);
+    // Calculate prefix width: "x{N} " per bit + "| [" + 1 digit per bit + "] | "
+    let prefix_width: usize = hist.bits.iter().map(|b| format!("x{} ", b).len()).sum::<usize>()
+        + 3 + hist.bits.len() + 4;
+    let bar_width = 80_usize.saturating_sub(prefix_width);
+    let max = *bins.iter().max().unwrap();
+    let avg: f64 = bins.iter().sum::<usize>() as f64 / bins.len() as f64;
+    let avg_len = (avg as usize) * bar_width / max;
+    
     for (i, ind) in hist.sorted_indices.iter().enumerate() {
         for x in &hist.bits {
             print!("x{} ", x);
@@ -59,8 +65,16 @@ fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: &Histogram, bins:
             j /= 2;
         }
         print!("] | ");
-        for _ in 0..bins[*ind] / unit {
-            print!("∎");
+
+        let bar_len = bins[*ind] * bar_width / max;
+        let above_avg = bins[*ind] as f64 > avg;
+        let split = if above_avg { avg_len.min(bar_len.saturating_sub(1)) } else { bar_len };
+        let base: String = "∎".repeat(split);
+        let red: String = "∎".repeat(bar_len - split);
+        if above_avg && i < hist.best_division {
+            print!("{base}\x1b[31m{red}\x1b[0m");
+        } else {
+            print!("{base}{red}");
         }
         println!();
         if i == (hist.best_division - 1) {
