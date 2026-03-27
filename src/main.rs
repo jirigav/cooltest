@@ -18,14 +18,7 @@ fn run_bottomup(args: Args) {
     let testing_data = testing_data.unwrap();
 
     let start = Instant::now();
-    let hist = bottomup(
-        &training_data,
-        args.block,
-        args.k,
-        args.top,
-        args.max_bits,
-        args.threads,
-    );
+    let hist = bottomup(&training_data, args.block, args.k, args.threads);
     println!("training finished in {:?}", start.elapsed());
 
     results(hist, &testing_data, args)

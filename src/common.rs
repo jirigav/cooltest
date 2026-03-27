@@ -23,14 +23,6 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = 2)]
     pub(crate) k: usize,
 
-    /// Number of best histograms taken for the second step.
-    #[arg(short, long, default_value_t = 1)]
-    pub(crate) top: usize,
-
-    /// Number of histograms combined in second step.
-    #[arg(short, long, default_value_t = 1)]
-    pub(crate) max_bits: usize,
-
     /// Significance level
     #[arg(short, long, default_value_t = 0.0001)]
     pub(crate) alpha: f64,
