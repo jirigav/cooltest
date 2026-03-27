@@ -19,7 +19,7 @@ fn run_bottomup(args: Args) {
 
     let start = Instant::now();
     let hist = bottomup(&training_data, args.block, args.k, args.threads);
-    println!("training finished in {:?}", start.elapsed());
+    println!("Search for distinguisher finished in {:?}", start.elapsed());
 
     results(hist, &testing_data, args)
 }
