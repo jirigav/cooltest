@@ -16,7 +16,8 @@ pub(crate) struct Args {
     pub(crate) data_source: String,
 
     /// Length of block of data.
-    #[arg(short, long, default_value_t = 128)] // Changing the default value changes autotest
+    #[arg(short, long, default_value_t = 128, value_parser = parse_block_size)]
+    // Changing the default value changes autotest
     pub(crate) block: usize,
 
     /// Number of bits in histograms in brute-force search.
@@ -51,6 +52,15 @@ pub(crate) enum SubCommand {
     /// Test data automatically with multiple configurations, optionally with the use of user-provided block size (-b)
     Autotest {},
 }
+
+fn parse_block_size(s: &str) -> Result<usize, String> {
+    let block: usize = s.parse().map_err(|e| format!("{e}"))?;
+    if !block.is_multiple_of(8) {
+        return Err("Block size must be divisible by 8".to_string());
+    }
+    Ok(block)
+}
+
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
     let mut result = 0;
 
