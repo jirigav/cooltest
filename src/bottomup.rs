@@ -23,13 +23,12 @@ impl Histogram {
         let mut max_z = 0.0;
         let mut best_i = 0;
         let prob = 2.0_f64.powf(-(bits.len() as f64));
+        let total: usize = bins.iter().sum();
+        let mut count = 0;
 
         for i in 1..2_usize.pow(bits.len() as u32) {
-            let mut count = 0;
-            for k in 0..i {
-                count += bins[indices[k]];
-            }
-            let z = z_score(bins.iter().sum(), count, prob * (i as f64)).abs();
+            count += bins[indices[i - 1]];
+            let z = z_score(total, count, prob * (i as f64)).abs();
             if z > max_z {
                 max_z = z;
                 best_i = i;
@@ -68,13 +67,8 @@ impl std::fmt::Debug for Histogram {
     }
 }
 
-fn first_zero_bit(mut k: usize) -> usize {
-    let mut i = 0;
-    while k != 0 && k % 2 == 1 {
-        k >>= 1;
-        i += 1;
-    }
-    i
+fn first_zero_bit(k: usize) -> usize {
+    (!k).trailing_zeros() as usize
 }
 
 fn choose(n: usize, r: usize) -> usize {
@@ -115,6 +109,13 @@ fn compute_bins(
 
     bins[value] = ones;
 
+    let mut bits_without: Vec<Vec<usize>> = Vec::with_capacity(d);
+    for ind in 0..d {
+        let mut b = bits.to_owned();
+        b.remove(ind);
+        bits_without.push(b);
+    }
+
     for k in (0..value).rev() {
         // find first zero in bin's index k and replace if with one. i.e. obtain index with distance 1 for which the bin value is already computed
         let mut k2 = k;
@@ -123,10 +124,7 @@ fn compute_bins(
 
         let n = (k2 & ((1 << ind) - 1)) + ((k2 >> (ind + 1)) << ind); // remove ind-th bit from the number
 
-        let mut bits2 = bits.to_owned();
-        bits2.remove(ind);
-
-        let prev = hists[compute_index(&bits2, block_size)][n]; // result from prev layer
+        let prev = hists[compute_index(&bits_without[ind], block_size)][n]; // result from prev layer
 
         bins[k] = prev - bins[k2];
     }
@@ -216,28 +214,21 @@ pub(crate) fn multi_eval_neg(
     let mut result = vec![u128::MAX; data.data[0].len()];
 
     for b in bits.iter() {
-        if negs.is_multiple_of(2) {
-            result = result
-                .iter()
-                .zip(&neg_data.data[*b])
-                .map(|(a, b)| a & b)
-                .collect();
+        let src = if negs % 2 == 0 {
+            &neg_data.data[*b]
         } else {
-            result = result
-                .iter()
-                .zip(&data.data[*b])
-                .map(|(a, b)| a & b)
-                .collect();
+            &data.data[*b]
+        };
+        for (r, d) in result.iter_mut().zip(src) {
+            *r &= d;
         }
         negs >>= 1;
     }
 
-    let r = result
+    result
         .iter()
         .map(|x| x.count_ones() as usize)
-        .sum::<usize>();
-
-    r
+        .sum::<usize>()
 }
 
 fn brute_force_threads(data: &Data, block_size: usize, k: usize, threads: usize) -> Histogram {
@@ -262,31 +253,30 @@ fn brute_force_threads(data: &Data, block_size: usize, k: usize, threads: usize)
     let total = choose(block_size, k) as u64;
     let pb = new_progress_bar(total, "Distinguisher search (threaded)");
 
-    let mut hists: Vec<Histogram> = (0..threads)
-        .into_par_iter()
-        .map(|i| {
-            let combs = (0..block_size).combinations(k).skip(i);
-
-            let mut best_hist = Histogram::from_bins(vec![0], &[1, 1], block_size);
-
-            for bits in combs.step_by(threads) {
-                let mut bins = vec![0; 2_usize.pow(k as u32)];
-                for (i, bin) in bins.iter_mut().enumerate() {
-                    *bin = multi_eval_neg(&bits, data, &neg_data, i);
-                }
-                let new_hist = Histogram::from_bins(bits, &bins, block_size);
-                if new_hist.z_score.abs() > best_hist.z_score.abs() {
-                    best_hist = new_hist;
-                }
-                pb.inc(1);
+    let best_hist = (0..block_size)
+        .combinations(k)
+        .par_bridge()
+        .map(|bits| {
+            let mut bins = vec![0; 2_usize.pow(k as u32)];
+            for (i, bin) in bins.iter_mut().enumerate() {
+                *bin = multi_eval_neg(&bits, data, &neg_data, i);
             }
-            best_hist
+            pb.inc(1);
+            Histogram::from_bins(bits, &bins, block_size)
         })
-        .collect();
+        .reduce(
+            || Histogram::from_bins(vec![0], &[1, 1], block_size),
+            |a, b| {
+                if a.z_score.abs() >= b.z_score.abs() {
+                    a
+                } else {
+                    b
+                }
+            },
+        );
     pb.finish_and_clear();
-    hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
 
-    hists.into_iter().next().unwrap()
+    best_hist
 }
 
 #[cfg(test)]

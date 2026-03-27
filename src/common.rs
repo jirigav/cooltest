@@ -88,18 +88,15 @@ pub(crate) fn multi_eval(bits: &[usize], data: &Data) -> usize {
     let mut result = vec![u128::MAX; data.data[0].len()];
 
     for b in bits.iter() {
-        result = result
-            .iter()
-            .zip(&data.data[*b])
-            .map(|(a, b)| a & b)
-            .collect();
+        for (r, d) in result.iter_mut().zip(&data.data[*b]) {
+            *r &= d;
+        }
     }
 
-    let r = result
+    result
         .iter()
         .map(|x| x.count_ones() as usize)
-        .sum::<usize>();
-    r
+        .sum::<usize>()
 }
 
 fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
