@@ -43,4 +43,8 @@ jobs:
       run: cargo fmt --all -- --check
     - name: Clippy
       run: cargo clippy -- -D warnings
-    
+    - name: Check unused dependencies
+      run: |
+        cargo install cargo-machete
+        cargo machete
+
