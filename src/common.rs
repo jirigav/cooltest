@@ -106,7 +106,7 @@ fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
     );
     let len_of_block_in_bytes = block_size / 8;
     let mut data: Vec<_> = fs::read(path)
-        .unwrap()
+        .unwrap_or_else(|e| panic!("Failed to read file '{}': {}", path, e))
         .chunks(len_of_block_in_bytes)
         .map(<[u8]>::to_vec)
         .collect();

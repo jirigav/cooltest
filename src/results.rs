@@ -23,7 +23,7 @@ pub(crate) fn results(hist: Histogram, testing_data: &[Vec<u8>], args: Args) {
 
     if let Some(path) = args.json.clone() {
         let mut file =
-            File::create(&path).unwrap_or_else(|_| panic!("File {} couldn't be created", path));
+            File::create(&path).unwrap_or_else(|e| panic!("Failed to create file '{}': {}", path, e));
 
         let output = json!({
             "args": args,

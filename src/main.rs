@@ -35,7 +35,7 @@ fn main() {
     match args.subcommand.clone() {
         Some(SubCommand::Evaluate { dis_path }) => {
             let contents = fs::read_to_string(&dis_path)
-                .unwrap_or_else(|_| panic!("Failed to read contents of {}", &dis_path));
+                .unwrap_or_else(|e| panic!("Failed to read file '{}': {}", &dis_path, e));
             let hist: Histogram =
                 serde_json::from_str(&contents).expect("Invalid distinguisher json!");
             args.block = hist.block_size;
