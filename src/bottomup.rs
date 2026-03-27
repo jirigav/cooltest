@@ -234,10 +234,10 @@ pub(crate) fn multi_eval_neg(
 fn brute_force_threads(data: &Data, block_size: usize, k: usize, threads: usize) -> Histogram {
     println!("Searching for distinguisher...");
 
-    rayon::ThreadPoolBuilder::new()
+    let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
-        .build_global()
-        .unwrap();
+        .build()
+        .expect("Failed to create thread pool");
 
     let mut neg_data = data.clone();
     neg_data.data = neg_data
@@ -253,27 +253,29 @@ fn brute_force_threads(data: &Data, block_size: usize, k: usize, threads: usize)
     let total = choose(block_size, k) as u64;
     let pb = new_progress_bar(total, "Distinguisher search (threaded)");
 
-    let best_hist = (0..block_size)
-        .combinations(k)
-        .par_bridge()
-        .map(|bits| {
-            let mut bins = vec![0; 2_usize.pow(k as u32)];
-            for (i, bin) in bins.iter_mut().enumerate() {
-                *bin = multi_eval_neg(&bits, data, &neg_data, i);
-            }
-            pb.inc(1);
-            Histogram::from_bins(bits, &bins, block_size)
-        })
-        .reduce(
-            || Histogram::from_bins(vec![0], &[1, 1], block_size),
-            |a, b| {
-                if a.z_score.abs() >= b.z_score.abs() {
-                    a
-                } else {
-                    b
+    let best_hist = pool.install(|| {
+        (0..block_size)
+            .combinations(k)
+            .par_bridge()
+            .map(|bits| {
+                let mut bins = vec![0; 2_usize.pow(k as u32)];
+                for (i, bin) in bins.iter_mut().enumerate() {
+                    *bin = multi_eval_neg(&bits, data, &neg_data, i);
                 }
-            },
-        );
+                pb.inc(1);
+                Histogram::from_bins(bits, &bins, block_size)
+            })
+            .reduce(
+                || Histogram::from_bins(vec![0], &[1, 1], block_size),
+                |a, b| {
+                    if a.z_score.abs() >= b.z_score.abs() {
+                        a
+                    } else {
+                        b
+                    }
+                },
+            )
+    });
     pb.finish_and_clear();
 
     best_hist
