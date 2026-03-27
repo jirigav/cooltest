@@ -99,36 +99,38 @@ pub(crate) fn multi_eval(bits: &[usize], data: &Data) -> usize {
         .sum::<usize>()
 }
 
-fn load_data(path: &str, block_size: usize) -> Vec<Vec<u8>> {
-    println!(
-        "Loading data from {} with block size {}...",
-        path, block_size
-    );
+pub(crate) fn load_data(path: &str) -> Vec<u8> {
+    println!("Loading data from {}...", path);
+    let data = fs::read(path)
+        .unwrap_or_else(|e| panic!("Failed to read file '{}': {}", path, e));
+    println!("Data loaded, {} bytes.", data.len());
+    data
+}
+
+fn chunk_data(raw: &[u8], block_size: usize) -> Vec<Vec<u8>> {
     let len_of_block_in_bytes = block_size / 8;
-    let mut data: Vec<_> = fs::read(path)
-        .unwrap_or_else(|e| panic!("Failed to read file '{}': {}", path, e))
+    let mut data: Vec<_> = raw
         .chunks(len_of_block_in_bytes)
         .map(<[u8]>::to_vec)
         .collect();
-    if data[data.len() - 1].len() != len_of_block_in_bytes {
+    if data.last().unwrap().len() != len_of_block_in_bytes {
         println!("Data are not aligned with block size, dropping last block!");
         data.pop();
     }
-    println!("Data loaded, {} blocks.", data.len());
+    println!("Block size {}, {} blocks.", block_size, data.len());
     data
 }
 
 pub(crate) fn prepare_data(
-    data_source: &str,
+    raw: &[u8],
     block_size: usize,
     training_data: bool,
 ) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>) {
-    let data = load_data(data_source, block_size);
+    let data = chunk_data(raw, block_size);
     if !training_data {
         (data, None)
     } else {
         let (tr_data, testing_data) = data.split_at(data.len() / 2);
-
         (tr_data.to_vec(), Some(testing_data.to_vec()))
     }
 }

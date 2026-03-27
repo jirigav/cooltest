@@ -1,5 +1,5 @@
 use crate::bottomup::bottomup;
-use crate::common::{prepare_data, Args};
+use crate::common::{load_data, prepare_data, Args};
 use crate::results::results;
 use std::time::Instant;
 
@@ -17,7 +17,8 @@ fn choose_k(block_size: usize, data_size: usize) -> usize {
 }
 
 pub(crate) fn autotest(mut args: Args) {
-    let (training_data, testing_data) = prepare_data(&args.data_source, args.block, true);
+    let raw = load_data(&args.data_source);
+    let (training_data, testing_data) = prepare_data(&raw, args.block, true);
     let mut testing_data = testing_data.unwrap();
     let mut tested_cases = 0;
     let start = Instant::now();
@@ -28,15 +29,14 @@ pub(crate) fn autotest(mut args: Args) {
     tested_cases += 1;
     println!("Testing block size {}; k = {} ...", args.block, k);
     let mut hist = bottomup(&training_data, args.block, k, args.threads);
-    let testing_data2;
     if args.block <= 256 {
         tested_cases += 1;
-        let (training_data, testing_data_opt2) =
-            prepare_data(&args.data_source, 2 * args.block, true);
-        testing_data2 = testing_data_opt2.unwrap();
+        let (training_data2, testing_data_opt2) =
+            prepare_data(&raw, 2 * args.block, true);
+        let testing_data2 = testing_data_opt2.unwrap();
         k = choose_k(2 * args.block, data_size);
         println!("Testing block size {}; k = {} ...", 2 * args.block, k);
-        let hist2 = bottomup(&training_data, args.block * 2, k, args.threads);
+        let hist2 = bottomup(&training_data2, args.block * 2, k, args.threads);
         if hist2.z_score.abs() > hist.z_score.abs() {
             hist = hist2;
             testing_data = testing_data2;

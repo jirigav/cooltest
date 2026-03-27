@@ -8,13 +8,14 @@ use crate::common::Args;
 use autotest::autotest;
 use bottomup::Histogram;
 use clap::Parser;
-use common::{prepare_data, SubCommand};
+use common::{load_data, prepare_data, SubCommand};
 use results::results;
 use std::fs;
 use std::time::Instant;
 
 fn run_bottomup(args: Args) {
-    let (training_data, testing_data) = prepare_data(&args.data_source, args.block, true);
+    let data = load_data(&args.data_source);
+    let (training_data, testing_data) = prepare_data(&data, args.block, true);
     let testing_data = testing_data.unwrap();
 
     let start = Instant::now();
@@ -40,7 +41,8 @@ fn main() {
                 serde_json::from_str(&contents).expect("Invalid distinguisher json!");
             args.block = hist.block_size;
             args.k = hist.bits.len();
-            let (testing_data, _) = prepare_data(&args.data_source, hist.block_size, false);
+            let data = load_data(&args.data_source);
+            let (testing_data, _) = prepare_data(&data, hist.block_size, false);
             results(hist, &testing_data, args)
         }
         Some(SubCommand::Autotest {}) => autotest(args),
