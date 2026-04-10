@@ -1,57 +1,81 @@
 use crate::bottomup::bottomup;
-use crate::common::{load_data, prepare_data, Args};
+use crate::common::{load_data, p_value, prepare_data, Args};
 use crate::results::results;
 use std::time::Instant;
 
 const GB: usize = 1000000000;
 const MB: usize = 1000000;
 
-fn choose_k(block_size: usize, data_size: usize) -> usize {
-    if data_size <= 10 * MB && block_size < 128 {
-        4
-    } else if data_size < 2 * GB && block_size < 256 {
-        3
-    } else {
-        2
+fn configurations(block_size: usize, data_size: usize) -> Vec<(usize, usize)> {
+    let mut configs = Vec::new();
+    configs.push((8, 8));
+    let mut bs = block_size;
+    while bs <= 512 {
+        let k = if data_size <= 10 * MB && bs < 128 {
+            4
+        } else if data_size < 2 * GB && bs < 256 {
+            3
+        } else {
+            2
+        };
+        configs.push((bs, k));
+        bs *= 2;
     }
+    configs
 }
 
 pub(crate) fn autotest(mut args: Args) {
     let raw = load_data(&args.data_source);
-    let (training_data, testing_data) = prepare_data(&raw, args.block, true);
-    let mut testing_data = testing_data.unwrap();
-    let mut tested_cases = 0;
     let start = Instant::now();
-    let data_size = training_data.len();
 
-    let mut k = choose_k(args.block, data_size);
+    let configs = configurations(args.block, raw.len());
+    let num_tests = configs.len();
+    let corrected_alpha = args.alpha / (num_tests as f64);
 
-    tested_cases += 1;
-    println!("Testing block size {}; k = {} ...", args.block, k);
-    let mut hist = bottomup(&training_data, args.block, k, args.threads);
-    if args.block <= 256 {
-        tested_cases += 1;
-        let (training_data2, testing_data_opt2) =
-            prepare_data(&raw, 2 * args.block, true);
-        let testing_data2 = testing_data_opt2.unwrap();
-        k = choose_k(2 * args.block, data_size);
-        println!("Testing block size {}; k = {} ...", 2 * args.block, k);
-        let hist2 = bottomup(&training_data2, args.block * 2, k, args.threads);
-        if hist2.z_score.abs() > hist.z_score.abs() {
-            hist = hist2;
-            testing_data = testing_data2;
+    if num_tests > 1 {
+        println!(
+            "Running {} configurations, significance level adjusted from {:.0e} to {:.0e}",
+            num_tests, args.alpha, corrected_alpha
+        );
+    }
+
+    let mut best_hist = None;
+    let mut best_testing_data = None;
+    let mut best_p_value = f64::MAX;
+
+    for (block_size, k) in &configs {
+        println!("\nTesting block size {}; k = {} ...", block_size, k);
+        let (training_data, testing_data) = prepare_data(&raw, *block_size, true);
+        let testing_data = testing_data.unwrap();
+        let hist = bottomup(&training_data, *block_size, *k, args.threads);
+
+        let (count, _) = hist.evaluate(&testing_data);
+        let prob = 2.0_f64.powf(-(hist.bits.len() as f64));
+        let p_val = p_value(
+            testing_data.len(),
+            count,
+            prob * (hist.best_division as f64),
+        );
+
+        if p_val < best_p_value {
+            best_p_value = p_val;
+            best_hist = Some(hist);
+            best_testing_data = Some(testing_data);
+        }
+
+        if p_val < corrected_alpha {
+            println!(
+                "Early stopping: p-value {:.0e} < corrected alpha {:.0e}",
+                p_val, corrected_alpha
+            );
+            break;
+        } else {
+            println!("p-value: {:.0e} >= corrected alpha {:.0e} (not significant)", p_val, corrected_alpha);
         }
     }
-    println!("training finished in {:?}", start.elapsed());
 
-    if tested_cases > 1 {
-        let new_alpha = args.alpha / (tested_cases as f64);
-        println!(
-            "Adjusting significance level based on the number of tests from {} to {}",
-            args.alpha, new_alpha
-        );
-        args.alpha = new_alpha;
-    }
+    println!("Finished in {:?}", start.elapsed());
 
-    results(hist, &testing_data, args)
+    args.alpha = corrected_alpha;
+    results(best_hist.unwrap(), &best_testing_data.unwrap(), args)
 }
