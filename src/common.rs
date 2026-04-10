@@ -195,7 +195,7 @@ pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> 
         let result: f64 = scipy_stats
             .getattr("binomtest")
             .expect("Scipy binomtest not found! Make sure that your version os SciPy is >=1.7.0.")
-            .call1((positive, sample_size, probability, "two-sided"))
+            .call1((positive, sample_size, probability, "greater"))
             .unwrap()
             .getattr("pvalue")
             .unwrap()
@@ -211,7 +211,7 @@ pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> 
         positive as u64,
         sample_size as u64,
         probability,
-        Alternative::TwoSided,
+        Alternative::Greater,
     )
     .unwrap()
 }
