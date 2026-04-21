@@ -27,14 +27,7 @@ pub(crate) fn autotest(mut args: Args) {
 
     tested_cases += 1;
     println!("Testing block size {}; k = {} ...", args.block, k);
-    let mut hist = bottomup(
-        &training_data,
-        args.block,
-        k,
-        args.top,
-        args.max_bits,
-        args.threads,
-    );
+    let mut hist = bottomup(&training_data, args.block, k, args.threads);
     let testing_data2;
     if args.block <= 256 {
         tested_cases += 1;
@@ -43,14 +36,7 @@ pub(crate) fn autotest(mut args: Args) {
         testing_data2 = testing_data_opt2.unwrap();
         k = choose_k(2 * args.block, data_size);
         println!("Testing block size {}; k = {} ...", 2 * args.block, k);
-        let hist2 = bottomup(
-            &training_data,
-            args.block * 2,
-            k,
-            args.top,
-            args.max_bits,
-            args.threads,
-        );
+        let hist2 = bottomup(&training_data, args.block * 2, k, args.threads);
         if hist2.z_score.abs() > hist.z_score.abs() {
             hist = hist2;
             testing_data = testing_data2;

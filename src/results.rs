@@ -42,36 +42,53 @@ pub(crate) fn results(hist: Histogram, testing_data: &[Vec<u8>], args: Args) {
 }
 
 fn print_results(p_value: f64, z_score: f64, alpha: f64, hist: &Histogram, bins: Vec<usize>) {
-    println!("----------------------------------------------------------------------");
+    println!("{}", "-".repeat(80));
     println!("RESULTS:\n");
 
     println!("Histogram(the discovered Boolean function returns 1 for values before the separator and 0 for values after the separator.):\n");
-    let m = bins.iter().max().unwrap();
-    let unit = (m / 50).max(1);
+    // Calculate prefix width: "x{N} " per bit + "| [" + 1 digit per bit + "] | "
+    let bits_prefix = hist
+        .bits
+        .iter()
+        .map(|b| format!("x{} ", b))
+        .collect::<String>();
+    let prefix_width: usize = bits_prefix.len() + hist.bits.len() + 7;
+    let bar_width = 80_usize.saturating_sub(prefix_width);
+    let max = *bins.iter().max().unwrap();
+    let avg: f64 = bins.iter().sum::<usize>() as f64 / bins.len() as f64;
+    let avg_len = (avg as usize) * bar_width / max;
+
     for (i, ind) in hist.sorted_indices.iter().enumerate() {
-        for x in &hist.bits {
-            print!("x{} ", x);
-        }
+        print!("{bits_prefix}| [");
+
         let mut j = *ind;
-        print!("| [");
         for _ in 0..hist.bits.len() {
             print!("{}", j % 2);
             j /= 2;
         }
         print!("] | ");
-        for _ in 0..bins[*ind] / unit {
-            print!("∎");
+
+        let bar_len = bins[*ind] * bar_width / max;
+        let above_avg = bins[*ind] as f64 > avg;
+        let split = if above_avg {
+            avg_len.saturating_sub(1)
+        } else {
+            bar_len
+        };
+        let base: String = "∎".repeat(split);
+        let red: String = "∎".repeat(bar_len - split);
+        if above_avg && i < hist.best_division {
+            println!("{base}\x1b[31m{red}\x1b[0m");
+        } else {
+            println!("{base}{red}");
         }
-        println!();
+
         if i == (hist.best_division - 1) {
-            for _ in 0..80 {
-                print!("—");
-            }
-            println!();
+            println!("{}", "—".repeat(80));
         }
     }
-    println!();
-    println!("Z-score: {z_score}");
+
+    println!("\nZ-score: {z_score}");
     println!("P-value: {p_value:.0e}");
     if p_value >= alpha {
         println!(
