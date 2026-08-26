@@ -1,8 +1,13 @@
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::iter::*;
+use std::cmp::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
-use crate::common::{bits_block_eval, multi_eval, transform_data, z_score, Data};
+use crate::common::{
+    bits_block_eval, multi_eval, new_progress_bar, status, transform_data, z_score, Data, Res,
+    MAX_K, PROGRESS_STEP,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -17,26 +22,27 @@ pub(crate) struct Histogram {
 
 impl Histogram {
     pub(crate) fn from_bins(bits: Vec<usize>, bins: &[usize], block_size: usize) -> Histogram {
-        let mut indices = (0..2_usize.pow(bits.len() as u32)).collect_vec();
+        let mut indices = (0..bins.len()).collect_vec();
         indices.sort_by(|a, b| bins[*b].cmp(&bins[*a]));
 
         let mut max_z = 0.0;
-        let mut best_i = 0;
-        let prob = 2.0_f64.powf(-(bits.len() as f64));
 
-        for i in 1..2_usize.pow(bits.len() as u32) {
-            let mut count = 0;
-            for k in 0..i {
-                count += bins[indices[k]];
-            }
-            let z = z_score(bins.iter().sum(), count, prob * (i as f64)).abs();
+        let mut best_i = 1;
+        let prob = 2.0_f64.powf(-(bits.len() as f64));
+        let total: usize = bins.iter().sum();
+        let mut count = 0;
+
+        for i in 1..bins.len() {
+            count += bins[indices[i - 1]];
+            let z = z_score(total, count, prob * (i as f64)).abs();
             if z > max_z {
                 max_z = z;
                 best_i = i;
             }
         }
+        debug_assert!(best_i >= 1 && best_i < bins.len().max(2));
         Histogram {
-            bits: bits.to_vec(),
+            bits,
             sorted_indices: indices,
             best_division: best_i,
             z_score: max_z,
@@ -44,16 +50,66 @@ impl Histogram {
         }
     }
 
-    pub(crate) fn evaluate(&self, data: &[Vec<u8>]) -> (usize, Vec<usize>) {
-        let mut hist2 = vec![0; 2_usize.pow(self.bits.len() as u32)];
-        for block in data {
-            hist2[bits_block_eval(&self.bits, block)] += 1;
+    /// Rejects distinguishers that would index out of bounds during evaluation. Needed because a
+    /// `Histogram` can arrive from a user-supplied JSON file rather than from the search.
+    pub(crate) fn validate(&self) -> Res<()> {
+        if self.block_size == 0 || !self.block_size.is_multiple_of(8) {
+            return Err(format!("invalid block size {} in distinguisher", self.block_size).into());
         }
-        let mut count = 0;
-        for k in 0..self.best_division {
-            count += hist2[self.sorted_indices[k]];
+        if self.bits.is_empty() || self.bits.len() > MAX_K {
+            return Err(format!(
+                "distinguisher must select between 1 and {MAX_K} bits, got {}",
+                self.bits.len()
+            )
+            .into());
         }
-        (count, hist2)
+        if self.bits.windows(2).any(|w| w[0] >= w[1]) {
+            return Err("distinguisher bits must be strictly increasing".into());
+        }
+        if let Some(bit) = self.bits.iter().find(|b| **b >= self.block_size) {
+            return Err(format!(
+                "distinguisher selects bit {bit}, outside a {}-bit block",
+                self.block_size
+            )
+            .into());
+        }
+        let n_bins = 1_usize << self.bits.len();
+        if self.sorted_indices.len() != n_bins {
+            return Err(format!(
+                "distinguisher has {} sorted indices, expected {n_bins}",
+                self.sorted_indices.len()
+            )
+            .into());
+        }
+        let mut seen = vec![false; n_bins];
+        for i in &self.sorted_indices {
+            if *i >= n_bins || std::mem::replace(&mut seen[*i], true) {
+                return Err(
+                    "distinguisher sorted indices are not a permutation of the bins".into(),
+                );
+            }
+        }
+        if self.best_division == 0 || self.best_division >= n_bins {
+            return Err(format!(
+                "distinguisher division {} must be between 1 and {}",
+                self.best_division,
+                n_bins - 1
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn evaluate(&self, data: &[u8]) -> (usize, Vec<usize>) {
+        let mut bins = vec![0; 1_usize << self.bits.len()];
+        for block in data.chunks_exact(self.block_size / 8) {
+            bins[bits_block_eval(&self.bits, block)] += 1;
+        }
+        let count = self.sorted_indices[..self.best_division]
+            .iter()
+            .map(|i| bins[*i])
+            .sum();
+        (count, bins)
     }
 }
 
@@ -68,23 +124,57 @@ impl std::fmt::Debug for Histogram {
     }
 }
 
-fn first_zero_bit(mut k: usize) -> usize {
-    let mut i = 0;
-    while k != 0 && k % 2 == 1 {
-        k >>= 1;
-        i += 1;
+/// Ranking key for candidate distinguishers. NaN (reachable only for an empty sample) sorts below
+/// every real score instead of winning, as it would under `total_cmp`.
+fn score(hist: &Histogram) -> f64 {
+    let z = hist.z_score.abs();
+    if z.is_nan() {
+        f64::NEG_INFINITY
+    } else {
+        z
     }
-    i
 }
 
+/// True when `a` should beat `b`. Ties break on `bits` lexicographically rather than on arrival
+/// order, so the parallel search is reproducible and agrees with the sequential one.
+fn better(a: &Histogram, b: &Histogram) -> bool {
+    match score(a).total_cmp(&score(b)) {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        Ordering::Equal => a.bits < b.bits,
+    }
+}
+
+fn keep_best(a: Histogram, b: Histogram) -> Histogram {
+    if better(&b, &a) {
+        b
+    } else {
+        a
+    }
+}
+
+fn first_zero_bit(k: usize) -> usize {
+    (!k).trailing_zeros() as usize
+}
+
+/// Binomial coefficient
 fn choose(n: usize, r: usize) -> usize {
     if r > n {
-        0
-    } else {
-        (1..=r).fold(1, |acc, val| acc * (n - val + 1) / val)
+        return 0;
     }
+    let mut acc: usize = 1;
+    for val in 1..=r {
+        acc = match acc.checked_mul(n - val + 1) {
+            Some(v) => v / val,
+            None => return usize::MAX,
+        };
+    }
+    acc
 }
 
+/// Rank of `bits` in the lexicographic ordering of `block_size choose bits.len()` combinations,
+/// matching the order `itertools::combinations` yields them in. This is what lets a layer address
+/// the previous layer's histograms by index rather than by search.
 fn compute_index(bits: &[usize], block_size: usize) -> usize {
     let mut result = 0;
     let mut j = 0;
@@ -115,6 +205,13 @@ fn compute_bins(
 
     bins[value] = ones;
 
+    let mut bits_without: Vec<Vec<usize>> = Vec::with_capacity(d);
+    for ind in 0..d {
+        let mut b = bits.to_owned();
+        b.remove(ind);
+        bits_without.push(b);
+    }
+
     for k in (0..value).rev() {
         // find first zero in bin's index k and replace if with one. i.e. obtain index with distance 1 for which the bin value is already computed
         let mut k2 = k;
@@ -123,47 +220,33 @@ fn compute_bins(
 
         let n = (k2 & ((1 << ind) - 1)) + ((k2 >> (ind + 1)) << ind); // remove ind-th bit from the number
 
-        let mut bits2 = bits.to_owned();
-        bits2.remove(ind);
-
-        let prev = hists[compute_index(&bits2, block_size)][n]; // result from prev layer
+        let prev = hists[compute_index(&bits_without[ind], block_size)][n]; // result from prev layer
 
         bins[k] = prev - bins[k2];
     }
 }
 
-fn new_progress_bar(total: u64, prefix: &str) -> ProgressBar {
-    let pb = ProgressBar::new(total);
-    pb.set_style(
-        ProgressStyle::with_template(
-            "{prefix} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
-        )
-        .unwrap()
-        .progress_chars("#>-"),
-    );
-    pb.set_prefix(prefix.to_string());
-    pb
-}
-
-fn brute_force(data: &Data, block_size: usize, k: usize) -> Histogram {
-    println!("Searching for distinguisher...");
+fn brute_force(data: &Data, block_size: usize, k: usize) -> Option<Histogram> {
+    status!("Searching for distinguisher...");
     let mut hists: Vec<Vec<usize>> = Vec::new();
     for i in 0..block_size {
         let ones = multi_eval(&[i], data);
-        hists.push(vec![(data._num_of_blocks as usize) - ones, ones])
+        hists.push(vec![data.num_of_blocks - ones, ones])
     }
 
     for d in 2..k {
         let total = choose(block_size, d) as u64;
         let pb = new_progress_bar(total, &format!("Distinguisher search (layer {d}/{k})"));
-        let mut new_hists = Vec::with_capacity(2_usize.pow(k as u32));
+        let mut new_hists = Vec::with_capacity(total as usize);
 
-        for bits in (0..block_size).combinations(d) {
+        for (i, bits) in (0..block_size).combinations(d).enumerate() {
             let mut bins = vec![0; 2_usize.pow(d as u32)];
             compute_bins(&bits, data, d, &hists, &mut bins, block_size);
 
             new_hists.push(bins);
-            pb.inc(1);
+            if (i as u64).is_multiple_of(PROGRESS_STEP) {
+                pb.set_position(i as u64);
+            }
         }
         pb.finish_and_clear();
         hists = new_hists;
@@ -171,40 +254,27 @@ fn brute_force(data: &Data, block_size: usize, k: usize) -> Histogram {
     if k > 1 {
         let total = choose(block_size, k) as u64;
         let pb = new_progress_bar(total, &format!("Distinguisher search (layer {k}/{k})"));
-        let mut best_hist = Histogram::from_bins(vec![0], &[1, 1], block_size);
+        let mut best_hist: Option<Histogram> = None;
         let mut bins = vec![0; 2_usize.pow(k as u32)];
-        for bits in (0..block_size).combinations(k) {
+        for (i, bits) in (0..block_size).combinations(k).enumerate() {
             compute_bins(&bits, data, k, &hists, &mut bins, block_size);
             let hist = Histogram::from_bins(bits, &bins, block_size);
-            if hist.z_score.abs() > best_hist.z_score.abs() {
-                best_hist = hist;
+            if best_hist.as_ref().is_none_or(|best| better(&hist, best)) {
+                best_hist = Some(hist);
             }
-            pb.inc(1);
+            if (i as u64).is_multiple_of(PROGRESS_STEP) {
+                pb.set_position(i as u64);
+            }
         }
         pb.finish_and_clear();
         best_hist
     } else {
-        let bits = (0..block_size).combinations(k).collect_vec();
-        let mut best: Vec<_> = hists
-            .into_iter()
-            .enumerate()
-            .map(|(i, bins)| Histogram::from_bins(bits[i].clone(), &bins, block_size))
-            .collect();
-
-        best.sort_by(|a, b| b.z_score.partial_cmp(&a.z_score).unwrap());
-        best.into_iter().next().unwrap()
+        (0..block_size)
+            .combinations(k)
+            .zip(hists)
+            .map(|(bits, bins)| Histogram::from_bins(bits, &bins, block_size))
+            .reduce(keep_best)
     }
-}
-
-pub(crate) fn bottomup(data: &[Vec<u8>], block_size: usize, k: usize, threads: usize) -> Histogram {
-    let res = if threads == 0 {
-        brute_force(&transform_data(data), block_size, k)
-    } else {
-        brute_force_threads(&transform_data(data), block_size, k, threads)
-    };
-
-    println!("Distinguisher: {:?}", res);
-    res
 }
 
 pub(crate) fn multi_eval_neg(
@@ -216,82 +286,114 @@ pub(crate) fn multi_eval_neg(
     let mut result = vec![u128::MAX; data.data[0].len()];
 
     for b in bits.iter() {
-        if negs.is_multiple_of(2) {
-            result = result
-                .iter()
-                .zip(&neg_data.data[*b])
-                .map(|(a, b)| a & b)
-                .collect();
+        let src = if negs.is_multiple_of(2) {
+            &neg_data.data[*b]
         } else {
-            result = result
-                .iter()
-                .zip(&data.data[*b])
-                .map(|(a, b)| a & b)
-                .collect();
+            &data.data[*b]
+        };
+        for (r, d) in result.iter_mut().zip(src) {
+            *r &= d;
         }
         negs >>= 1;
     }
 
-    let r = result
+    result
         .iter()
         .map(|x| x.count_ones() as usize)
-        .sum::<usize>();
-
-    r
+        .sum::<usize>()
 }
 
-fn brute_force_threads(data: &Data, block_size: usize, k: usize, threads: usize) -> Histogram {
-    println!("Searching for distinguisher...");
-
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build_global()
-        .unwrap();
-
-    let mut neg_data = data.clone();
-    neg_data.data = neg_data
+/// Bitwise complement of `data`, with the padding past the final block cleared so that complemented
+/// bits of nonexistent blocks are not counted.
+pub(crate) fn negate(data: &Data) -> Data {
+    let mut neg = data.clone();
+    neg.data = neg
         .data
         .iter()
         .map(|x| x.iter().map(|a| a ^ u128::MAX).collect())
         .collect();
-    neg_data.data.iter_mut().for_each(|x| {
-        let l = x.len();
-        x[l - 1] &= data._mask;
+    neg.data.iter_mut().for_each(|x| {
+        if let Some(last) = x.last_mut() {
+            *last &= data.mask;
+        }
     });
+    neg
+}
+
+fn brute_force_threads(
+    data: &Data,
+    block_size: usize,
+    k: usize,
+    threads: usize,
+) -> Option<Histogram> {
+    status!("Searching for distinguisher...");
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .expect("Failed to create thread pool");
+
+    let neg_data = negate(data);
 
     let total = choose(block_size, k) as u64;
     let pb = new_progress_bar(total, "Distinguisher search (threaded)");
+    let done = AtomicU64::new(0);
 
-    let mut hists: Vec<Histogram> = (0..threads)
-        .into_par_iter()
-        .map(|i| {
-            let combs = (0..block_size).combinations(k).skip(i);
-
-            let mut best_hist = Histogram::from_bins(vec![0], &[1, 1], block_size);
-
-            for bits in combs.step_by(threads) {
+    let best_hist = pool.install(|| {
+        (0..block_size)
+            .combinations(k)
+            .par_bridge()
+            .map(|bits| {
                 let mut bins = vec![0; 2_usize.pow(k as u32)];
                 for (i, bin) in bins.iter_mut().enumerate() {
                     *bin = multi_eval_neg(&bits, data, &neg_data, i);
                 }
-                let new_hist = Histogram::from_bins(bits, &bins, block_size);
-                if new_hist.z_score.abs() > best_hist.z_score.abs() {
-                    best_hist = new_hist;
-                }
-                pb.inc(1);
-            }
-            best_hist
-        })
-        .collect();
+                advance(&pb, &done);
+                Histogram::from_bins(bits, &bins, block_size)
+            })
+            .reduce_with(keep_best)
+    });
     pb.finish_and_clear();
-    hists.sort_by(|a, b| b.z_score.abs().partial_cmp(&a.z_score.abs()).unwrap());
 
-    hists.into_iter().next().unwrap()
+    best_hist
+}
+
+/// Batches progress updates: each `ProgressBar::inc` takes a lock, which under `par_bridge` is
+/// contended by every worker on every candidate.
+fn advance(pb: &ProgressBar, done: &AtomicU64) {
+    if done
+        .fetch_add(1, AtomicOrdering::Relaxed)
+        .is_multiple_of(PROGRESS_STEP)
+    {
+        pb.inc(PROGRESS_STEP);
+    }
+}
+
+pub(crate) fn bottomup(data: &[u8], block_size: usize, k: usize, threads: usize) -> Res<Histogram> {
+    let transformed = transform_data(data, block_size);
+
+    // The two searches compute the same histograms with opposite trade-offs. The incremental one
+    // derives 2^k - 1 of every candidate's bins by subtraction from the previous layer, so it
+    // touches the data 2^k times less often, but must keep that layer in memory. The direct one
+    // stores nothing and re-scans once per bin, so it only pays off past 2^k threads.
+    let res = if threads == 0 {
+        brute_force(&transformed, block_size, k)
+    } else {
+        brute_force_threads(&transformed, block_size, k, threads)
+    };
+
+    let res = res.ok_or_else(|| {
+        format!("no distinguisher found: there are no {k}-bit subsets of a {block_size}-bit block")
+    })?;
+
+    status!("Distinguisher: {res:?}");
+    Ok(res)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::{splitmix64_bytes, transform_data};
 
     #[test]
     fn test_choose() {
@@ -301,6 +403,13 @@ mod tests {
         assert_eq!(choose(1, 1), 1);
         assert_eq!(choose(50, 33), 9847379391150);
         assert_eq!(choose(14, 9), 2002);
+    }
+
+    #[test]
+    fn test_choose_saturates_instead_of_wrapping() {
+        // C(4096, 20) is far past usize::MAX; the old unchecked multiply wrapped to a small,
+        // plausible-looking number.
+        assert_eq!(choose(4096, 20), usize::MAX);
     }
 
     #[test]
@@ -318,5 +427,184 @@ mod tests {
         assert_eq!(first_zero_bit(0b1011111111), 8);
         assert_eq!(first_zero_bit(0b10111111111), 9);
         assert_eq!(first_zero_bit(0b101111111111), 10);
+    }
+
+    /// `compute_index` must reproduce the position at which `itertools::combinations` yields each
+    /// combination; the layered search addresses the previous layer by that index alone.
+    #[test]
+    fn test_compute_index_matches_combination_order() {
+        for block_size in [4, 8, 16, 32] {
+            for k in 1..=4.min(block_size) {
+                for (expected, bits) in (0..block_size).combinations(k).enumerate() {
+                    assert_eq!(
+                        compute_index(&bits, block_size),
+                        expected,
+                        "block_size={block_size} k={k} bits={bits:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Counts bins one block at a time. Deliberately naive: this is the specification that both
+    /// search algorithms must reproduce.
+    fn reference_bins(bits: &[usize], data: &[u8], block_size: usize) -> Vec<usize> {
+        let mut bins = vec![0; 1_usize << bits.len()];
+        for block in data.chunks_exact(block_size / 8) {
+            bins[bits_block_eval(bits, block)] += 1;
+        }
+        bins
+    }
+
+    /// Cross-checks the bin-subtraction recursion and the direct complement-mask evaluation against
+    /// the naive reference, over block counts on both sides of the 128-block word boundary. This
+    /// covers `compute_index`, `first_zero_bit`, and the `compute_bins` recursion at once, and pins
+    /// the two search paths to each other.
+    #[test]
+    fn test_bins_match_reference() {
+        for block_size in [8, 16, 32] {
+            let max_k = if block_size <= 16 { 4 } else { 3 };
+            for n_blocks in [1, 5, 127, 128, 129] {
+                let raw = splitmix64_bytes(n_blocks * block_size / 8, 0xC001_D00D);
+                let data = transform_data(&raw, block_size);
+                let neg_data = negate(&data);
+
+                let mut hists: Vec<Vec<usize>> = (0..block_size)
+                    .map(|i| {
+                        let ones = multi_eval(&[i], &data);
+                        vec![data.num_of_blocks - ones, ones]
+                    })
+                    .collect();
+
+                for (i, bins) in hists.iter().enumerate() {
+                    assert_eq!(
+                        *bins,
+                        reference_bins(&[i], &raw, block_size),
+                        "layer 1 mismatch: block_size={block_size} n_blocks={n_blocks} bit={i}"
+                    );
+                }
+
+                for d in 2..=max_k {
+                    let mut new_hists = Vec::new();
+                    for bits in (0..block_size).combinations(d) {
+                        let expected = reference_bins(&bits, &raw, block_size);
+
+                        let mut bins = vec![0; 1_usize << d];
+                        compute_bins(&bits, &data, d, &hists, &mut bins, block_size);
+                        assert_eq!(
+                            bins, expected,
+                            "compute_bins: block_size={block_size} n_blocks={n_blocks} bits={bits:?}"
+                        );
+
+                        let direct: Vec<usize> = (0..1_usize << d)
+                            .map(|i| multi_eval_neg(&bits, &data, &neg_data, i))
+                            .collect();
+                        assert_eq!(
+                            direct, expected,
+                            "multi_eval_neg: block_size={block_size} n_blocks={n_blocks} bits={bits:?}"
+                        );
+
+                        new_hists.push(bins);
+                    }
+                    hists = new_hists;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_bins_never_selects_an_empty_division() {
+        // Flat bins give every division a z-score of exactly zero; the division still has to be a
+        // real one, or evaluation reports a verdict drawn from no bins.
+        for k in 1..=4 {
+            let bins = vec![10_usize; 1 << k];
+            let hist = Histogram::from_bins((0..k).collect(), &bins, 64);
+            assert!(hist.best_division >= 1);
+            assert!(hist.best_division < bins.len());
+            hist.validate().unwrap();
+        }
+        // An empty sample makes every z-score NaN.
+        let hist = Histogram::from_bins(vec![0, 1], &[0, 0, 0, 0], 64);
+        assert_eq!(hist.best_division, 1);
+        hist.validate().unwrap();
+    }
+
+    #[test]
+    fn test_better_breaks_ties_deterministically() {
+        let a = Histogram::from_bins(vec![0, 1], &[4, 3, 2, 1], 64);
+        let b = Histogram::from_bins(vec![0, 2], &[4, 3, 2, 1], 64);
+        assert_eq!(a.z_score, b.z_score);
+        // Equal scores: the lexicographically smaller bit set wins, whichever way round it is asked.
+        assert!(better(&a, &b));
+        assert!(!better(&b, &a));
+        assert_eq!(keep_best(a.clone(), b.clone()).bits, vec![0, 1]);
+        assert_eq!(keep_best(b, a).bits, vec![0, 1]);
+    }
+
+    #[test]
+    fn test_validate_rejects_malformed_distinguishers() {
+        let good = Histogram::from_bins(vec![0, 1], &[9, 5, 3, 1], 64);
+        good.validate().unwrap();
+
+        let mut h = good.clone();
+        h.best_division = 0;
+        assert!(h.validate().is_err());
+
+        let mut h = good.clone();
+        h.best_division = 4;
+        assert!(h.validate().is_err());
+
+        let mut h = good.clone();
+        h.sorted_indices = vec![0, 0, 1, 2];
+        assert!(h.validate().is_err());
+
+        let mut h = good.clone();
+        h.sorted_indices = vec![0, 1, 2, 9];
+        assert!(h.validate().is_err());
+
+        let mut h = good.clone();
+        h.bits = vec![1, 0];
+        assert!(h.validate().is_err());
+
+        let mut h = good.clone();
+        h.bits = vec![0, 64];
+        assert!(h.validate().is_err());
+
+        let mut h = good.clone();
+        h.block_size = 12;
+        assert!(h.validate().is_err());
+    }
+
+    /// Both searches must return the same distinguisher, including on ties.
+    #[test]
+    fn test_search_paths_agree() {
+        for block_size in [8, 16, 32] {
+            for k in 1..=3.min(block_size) {
+                for seed in [1_u64, 42, 12345] {
+                    let raw = splitmix64_bytes(200 * block_size / 8, seed);
+                    let data = transform_data(&raw, block_size);
+
+                    let sequential = brute_force(&data, block_size, k).unwrap();
+                    let parallel = brute_force_threads(&data, block_size, k, 4).unwrap();
+
+                    assert_eq!(
+                        sequential.bits, parallel.bits,
+                        "block_size={block_size} k={k} seed={seed}"
+                    );
+                    assert_eq!(sequential.best_division, parallel.best_division);
+                    assert_eq!(sequential.sorted_indices, parallel.sorted_indices);
+                    assert_eq!(sequential.z_score, parallel.z_score);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_no_candidates_returns_none() {
+        let raw = splitmix64_bytes(64, 7);
+        let data = transform_data(&raw, 8);
+        assert!(brute_force(&data, 8, 9).is_none());
+        assert!(brute_force_threads(&data, 8, 9, 2).is_none());
+        assert!(bottomup(&raw, 8, 9, 0).is_err());
     }
 }

@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "cooltest"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "binomtest",
  "clap",
@@ -184,11 +184,9 @@ dependencies = [
  "indicatif",
  "itertools",
  "pyo3",
- "rand",
  "rayon",
  "serde",
  "serde_json",
- "statrs",
 ]
 
 [[package]]
