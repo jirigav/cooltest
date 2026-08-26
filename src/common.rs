@@ -201,7 +201,10 @@ pub(crate) fn whole_blocks(raw: &[u8], block_size: usize, training: bool) -> Res
     }
     status!("Block size {block_size}, {n_blocks} blocks.");
     if training {
-        Ok((&raw[..(n_blocks / 2) * block_bytes], &raw[(n_blocks / 2) * block_bytes..n_blocks * block_bytes]))
+        Ok((
+            &raw[..(n_blocks / 2) * block_bytes],
+            &raw[(n_blocks / 2) * block_bytes..n_blocks * block_bytes],
+        ))
     } else {
         Ok((&raw[..n_blocks * block_bytes], &[]))
     }
@@ -361,7 +364,10 @@ mod tests {
 
         // Upper tail: observed well above expectation.
         assert!(approx_eq(p_value(1245, 872, 0.51), 1.581616064854676e-42));
-        assert!(approx_eq(p_value(2228, 1993, 0.61), 4.2305090286988354e-200));
+        assert!(approx_eq(
+            p_value(2228, 1993, 0.61),
+            4.2305090286988354e-200
+        ));
         assert!(approx_eq(p_value(711, 342, 0.2), 4.111347623990106e-63));
         assert!(approx_eq(p_value(2295, 1187, 0.02), 0.0));
 
