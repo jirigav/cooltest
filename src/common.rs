@@ -1,13 +1,38 @@
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(not(feature = "scipy"))]
 use binomtest::*;
 
 #[cfg(feature = "scipy")]
 use pyo3::prelude::*;
+
+pub(crate) type Res<T> = Result<T, Box<dyn Error>>;
+
+static QUIET: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn set_quiet(quiet: bool) {
+    QUIET.store(quiet, Ordering::Relaxed);
+}
+
+pub(crate) fn is_quiet() -> bool {
+    QUIET.load(Ordering::Relaxed)
+}
+
+/// Prints progress and status information to stderr, so that stdout carries only results.
+/// Suppressed entirely by `--quiet`.
+macro_rules! status {
+    ($($arg:tt)*) => {
+        if !$crate::common::is_quiet() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+pub(crate) use status;
 
 #[derive(Parser, Debug, Serialize, Deserialize, Clone)]
 #[command(version)]
@@ -21,11 +46,11 @@ pub(crate) struct Args {
     pub(crate) block: usize,
 
     /// Number of bits in histograms in brute-force search.
-    #[arg(short, long, default_value_t = 2)]
+    #[arg(short, long, default_value_t = 2, value_parser = parse_k)]
     pub(crate) k: usize,
 
     /// Significance level
-    #[arg(short, long, default_value_t = 0.0001)]
+    #[arg(short, long, default_value_t = 0.0001, value_parser = parse_alpha)]
     pub(crate) alpha: f64,
 
     /// Number of threads for multi-thread run. 0 uses an optimized single-thread algorithm (recommended for small inputs). 1 uses the multi-thread code with a single thread. Values ≥2 run in parallel.
@@ -36,6 +61,14 @@ pub(crate) struct Args {
     #[arg(short, long)]
     pub(crate) json: Option<String>,
 
+    /// Suppress progress bars and status messages; print only the results.
+    #[arg(short, long, default_value_t = false)]
+    pub(crate) quiet: bool,
+
+    /// Exit with status 1 when the randomness hypothesis is rejected.
+    #[arg(long, default_value_t = false)]
+    pub(crate) exit_code: bool,
+
     #[clap(subcommand)]
     pub subcommand: Option<SubCommand>,
 }
@@ -43,6 +76,9 @@ pub(crate) struct Args {
 #[derive(Parser, PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum SubCommand {
     /// Evaluate a given distinguisher on given data and report p-value.
+    ///
+    /// The whole input file is used for evaluation. To keep the p-value valid, the file must be
+    /// disjoint from the data the distinguisher was trained on.
     Evaluate {
         /// Path of file with distinguisher which should be evaluated.
         #[arg(short, long)]
@@ -55,10 +91,48 @@ pub(crate) enum SubCommand {
 
 fn parse_block_size(s: &str) -> Result<usize, String> {
     let block: usize = s.parse().map_err(|e| format!("{e}"))?;
+    if block == 0 {
+        return Err("Block size must be positive".to_string());
+    }
     if !block.is_multiple_of(8) {
         return Err("Block size must be divisible by 8".to_string());
     }
     Ok(block)
+}
+
+/// Upper bound on `k`. The search allocates `2^k` histogram bins per candidate, so anything near
+/// this limit is already impractical
+pub(crate) const MAX_K: usize = 20;
+
+fn parse_k(s: &str) -> Result<usize, String> {
+    let k: usize = s.parse().map_err(|e| format!("{e}"))?;
+    if k == 0 {
+        return Err("k must be at least 1".to_string());
+    }
+    if k > MAX_K {
+        return Err(format!("k must be at most {MAX_K}, typical values are 1..=4").to_string());
+    }
+    Ok(k)
+}
+
+fn parse_alpha(s: &str) -> Result<f64, String> {
+    let alpha: f64 = s.parse().map_err(|e| format!("{e}"))?;
+    if !(alpha > 0.0 && alpha < 1.0) {
+        return Err("Significance level must be in the open interval (0, 1)".to_string());
+    }
+    Ok(alpha)
+}
+
+/// Checks the argument combinations that a per-argument parser cannot see.
+pub(crate) fn validate_args(args: &Args) -> Res<()> {
+    if args.k > args.block {
+        return Err(format!(
+            "k = {} is larger than block size {}: a block does not have that many bits",
+            args.k, args.block
+        )
+        .into());
+    }
+    Ok(())
 }
 
 pub(crate) fn bits_block_eval(bits: &[usize], block: &[u8]) -> usize {
@@ -79,9 +153,13 @@ pub(crate) fn bit_value_in_block(bit: usize, block: &[u8]) -> bool {
 
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct Data {
+    /// `data[bit][word]` holds the value of `bit` for 128 consecutive blocks, one per bit of the
+    /// `u128`.
     pub(crate) data: Vec<Vec<u128>>,
-    pub(crate) _mask: u128,
-    pub(crate) _num_of_blocks: u32,
+    /// Marks the valid bits of the final word, which is only partially filled unless the block
+    /// count is a multiple of 128.
+    pub(crate) mask: u128,
+    pub(crate) num_of_blocks: usize,
 }
 
 pub(crate) fn multi_eval(bits: &[usize], data: &Data) -> usize {
@@ -99,87 +177,116 @@ pub(crate) fn multi_eval(bits: &[usize], data: &Data) -> usize {
         .sum::<usize>()
 }
 
-pub(crate) fn load_data(path: &str) -> Vec<u8> {
-    println!("Loading data from {}...", path);
-    let data = fs::read(path)
-        .unwrap_or_else(|e| panic!("Failed to read file '{}': {}", path, e));
-    println!("Data loaded, {} bytes.", data.len());
-    data
+pub(crate) fn load_data(path: &str) -> Res<Vec<u8>> {
+    status!("Loading data from {path}...");
+    let data = fs::read(path).map_err(|e| format!("failed to read '{path}': {e}"))?;
+    status!("Data loaded, {} bytes.", data.len());
+    Ok(data)
 }
 
-fn chunk_data(raw: &[u8], block_size: usize) -> Vec<Vec<u8>> {
-    let len_of_block_in_bytes = block_size / 8;
-    let mut data: Vec<_> = raw
-        .chunks(len_of_block_in_bytes)
-        .map(<[u8]>::to_vec)
-        .collect();
-    if data.last().unwrap().len() != len_of_block_in_bytes {
-        println!("Data are not aligned with block size, dropping last block!");
-        data.pop();
+/// Truncates `raw` to a whole number of blocks.
+/// If training is set to true, the data is split into training and testing halves, otherwise the whole data is used for testing.
+pub(crate) fn whole_blocks(raw: &[u8], block_size: usize, training: bool) -> Res<(&[u8], &[u8])> {
+    let block_bytes = block_size / 8;
+    let n_blocks = raw.len() / block_bytes;
+    if n_blocks < 2 {
+        return Err(format!(
+            "input is {} bytes, which is less than two {block_size}-bit blocks",
+            raw.len()
+        )
+        .into());
     }
-    println!("Block size {}, {} blocks.", block_size, data.len());
-    data
-}
-
-pub(crate) fn prepare_data(
-    raw: &[u8],
-    block_size: usize,
-    training_data: bool,
-) -> (Vec<Vec<u8>>, Option<Vec<Vec<u8>>>) {
-    let data = chunk_data(raw, block_size);
-    if !training_data {
-        (data, None)
+    if !raw.len().is_multiple_of(block_bytes) {
+        status!("Data are not aligned with block size, dropping last block!");
+    }
+    status!("Block size {block_size}, {n_blocks} blocks.");
+    if training {
+        Ok((&raw[..(n_blocks / 2) * block_bytes], &raw[(n_blocks / 2) * block_bytes..n_blocks * block_bytes]))
     } else {
-        let (tr_data, testing_data) = data.split_at(data.len() / 2);
-        (tr_data.to_vec(), Some(testing_data.to_vec()))
+        Ok((&raw[..n_blocks * block_bytes], &[]))
     }
 }
 
-/// Returns data transformed into vectors of u64, where i-th u64 contains values of 64 i-th bits of consecutive blocks.
-pub(crate) fn transform_data(data: &[Vec<u8>]) -> Data {
-    let mut result = Vec::new();
-    let block_size = data[0].len() * 8;
-    let total_chunks = data.chunks(128).len() as u64;
-    let pb = ProgressBar::new(total_chunks);
+/// Smallest number of testing blocks that could ever produce a p-value below `alpha`.
+///
+/// The most extreme outcome puts every block in the selected bin set, giving a p-value of `p^n`
+/// where `p >= 1/2` is unknown before the search. Using the most favourable `p = 1/2` yields a
+/// lower bound on the required sample size.
+pub(crate) fn min_blocks_for_alpha(alpha: f64) -> usize {
+    (1.0 / alpha).log2().ceil() as usize
+}
+
+pub(crate) fn warn_if_underpowered(testing_blocks: usize, alpha: f64) {
+    let needed = min_blocks_for_alpha(alpha);
+    if testing_blocks < needed {
+        status!(
+            "WARNING: only {testing_blocks} testing blocks. At alpha = {alpha:.0e} the randomness \
+             hypothesis cannot be rejected with fewer than {needed} blocks, no matter what the \
+             data look like."
+        );
+    }
+}
+
+pub(crate) fn new_progress_bar(total: u64, prefix: &str) -> ProgressBar {
+    if is_quiet() {
+        return ProgressBar::hidden();
+    }
+    let pb = ProgressBar::new(total);
     pb.set_style(
         ProgressStyle::with_template(
-            "Transforming training data [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+            "{prefix} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
         )
         .unwrap()
         .progress_chars("#>-"),
     );
-    for blocks in data.chunks(128) {
-        let mut ints = vec![0_u128; block_size];
+    pb.set_prefix(prefix.to_string());
+    pb
+}
 
-        for (e, block) in blocks.iter().enumerate() {
-            for (i, int) in ints.iter_mut().enumerate().take(block_size) {
-                if bit_value_in_block(i, block) {
-                    *int += 1_u128 << e;
+/// Number of iterations between progress-bar updates.
+pub(crate) const PROGRESS_STEP: u64 = 4096;
+
+/// Transforms blocks into a bit-sliced layout: `data[i]` holds bit `i` of 128 consecutive blocks
+/// packed into each `u128`, so a candidate can be evaluated on 128 blocks per instruction.
+pub(crate) fn transform_data(data: &[u8], block_size: usize) -> Data {
+    let block_bytes = block_size / 8;
+    let n_blocks = data.len() / block_bytes;
+    let n_words = n_blocks.div_ceil(128);
+
+    let mut sliced = vec![vec![0_u128; n_words]; block_size];
+
+    let pb = new_progress_bar(n_words as u64, "Transforming data");
+    for (word, group) in data.chunks(block_bytes * 128).enumerate() {
+        for (e, block) in group.chunks_exact(block_bytes).enumerate() {
+            let block_bit = 1_u128 << e;
+            for (byte_index, &byte) in block.iter().enumerate() {
+                if byte == 0 {
+                    continue;
+                }
+                let base = byte_index * 8;
+                for offset in 0..8 {
+                    if (byte >> (7 - offset)) & 1 == 1 {
+                        sliced[base + offset][word] |= block_bit;
+                    }
                 }
             }
         }
-        result.push(ints);
-        pb.inc(1);
+        if (word as u64).is_multiple_of(PROGRESS_STEP) {
+            pb.set_position(word as u64);
+        }
     }
     pb.finish_and_clear();
-    let mask = if data.len().is_multiple_of(128) {
+
+    let mask = if n_blocks.is_multiple_of(128) {
         u128::MAX
     } else {
-        2_u128.pow((data.len() % 128) as u32) - 1
+        (1_u128 << (n_blocks % 128)) - 1
     };
-    let mut d = Vec::new();
 
-    for i in 0..(data[0].len() * 8) {
-        let mut bit = Vec::new();
-        for block in result.iter() {
-            bit.push(block[i])
-        }
-        d.push(bit);
-    }
     Data {
-        data: d,
-        _mask: mask,
-        _num_of_blocks: data.len() as u32,
+        data: sliced,
+        mask,
+        num_of_blocks: n_blocks,
     }
 }
 
@@ -194,7 +301,7 @@ pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> 
             .expect("SciPy not installed! Use `pip install scipy` to install the library.");
         let result: f64 = scipy_stats
             .getattr("binomtest")
-            .expect("Scipy binomtest not found! Make sure that your version os SciPy is >=1.7.0.")
+            .expect("Scipy binomtest not found! Make sure that your version of SciPy is >=1.7.0.")
             .call1((positive, sample_size, probability, "greater"))
             .unwrap()
             .getattr("pvalue")
@@ -216,31 +323,62 @@ pub(crate) fn p_value(sample_size: usize, positive: usize, probability: f64) -> 
     .unwrap()
 }
 
+/// Deterministic pseudorandom bytes for tests. splitmix64 passes the standard batteries, so data
+/// drawn from it should not be rejected; using a fixed generator keeps the statistical tests
+/// reproducible without an rng dependency.
+#[cfg(test)]
+pub(crate) fn splitmix64_bytes(len: usize, seed: u64) -> Vec<u8> {
+    let mut state = seed;
+    let mut out = Vec::with_capacity(len + 8);
+    while out.len() < len {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        out.extend_from_slice(&z.to_le_bytes());
+    }
+    out.truncate(len);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn approx_eq(a: f64, b: f64) -> bool {
-        println!("{}, {}", a, b);
-        return (a - b).abs() <= b * 0.000001;
+        (a - b).abs() <= f64::max(b.abs() * 1e-6, 1e-12)
     }
 
+    /// Reference values from `scipy.stats.binomtest(k, n, p, "greater").pvalue`.
     #[test]
     fn test_p_value() {
+        // Single trial, exact by hand.
         assert!(approx_eq(p_value(1, 1, 0.0), 0.0));
         assert!(approx_eq(p_value(1, 1, 1.0), 1.0));
-        assert!(approx_eq(p_value(1, 1, 0.5), 1.0));
+        assert!(approx_eq(p_value(1, 1, 0.5), 0.5));
         assert!(approx_eq(p_value(1, 1, 0.25), 0.25));
-        assert!(approx_eq(p_value(8064, 675, 0.85), 0.0));
-        assert!(approx_eq(p_value(1245, 872, 0.51), 2.519147904123094e-42));
-        assert!(approx_eq(p_value(3952, 3009, 0.87), 1.6048354143177452e-76));
-        assert!(approx_eq(p_value(6395, 1774, 0.32), 1.4633129278540793e-13));
-        assert!(approx_eq(p_value(7716, 969, 0.76), 0.0));
-        assert!(approx_eq(p_value(4231, 1225, 0.75), 0.0));
+
+        // Upper tail: observed well above expectation.
+        assert!(approx_eq(p_value(1245, 872, 0.51), 1.581616064854676e-42));
+        assert!(approx_eq(p_value(2228, 1993, 0.61), 4.2305090286988354e-200));
+        assert!(approx_eq(p_value(711, 342, 0.2), 4.111347623990106e-63));
         assert!(approx_eq(p_value(2295, 1187, 0.02), 0.0));
-        assert!(approx_eq(p_value(2228, 1993, 0.61), 8.219896711580438e-200));
-        assert!(approx_eq(p_value(5936, 4649, 0.97), 0.0));
-        assert!(approx_eq(p_value(711, 342, 0.2), 5.29655579272766e-63));
+
+        // Mid-range, where an error in scale or continuity would show up.
+        assert!(approx_eq(p_value(1000, 520, 0.5), 0.10872414660207075));
+        assert!(approx_eq(p_value(1000, 510, 0.5), 0.2739863729617383));
+        assert!(approx_eq(p_value(64, 20, 0.25), 0.15605708100416849));
+        assert!(approx_eq(p_value(200, 60, 0.25), 0.06247223105646413));
+        assert!(approx_eq(p_value(10000, 2560, 0.25), 0.08496741896324542));
+
+        // Lower tail: a two-sided test would call these extreme, a one-sided "greater" must not.
+        assert!(approx_eq(p_value(8064, 675, 0.85), 1.0));
+        assert!(approx_eq(p_value(3952, 3009, 0.87), 1.0));
+        assert!(approx_eq(p_value(7716, 969, 0.76), 1.0));
+        assert!(approx_eq(p_value(4231, 1225, 0.75), 1.0));
+        assert!(approx_eq(p_value(5936, 4649, 0.97), 1.0));
+        assert!(approx_eq(p_value(6395, 1774, 0.32), 0.9999999999999359));
     }
 
     #[test]
@@ -260,30 +398,30 @@ mod tests {
 
     #[test]
     fn test_bit_value_in_block() {
-        assert_eq!(bit_value_in_block(0, &[2_u8.pow(7)]), true);
-        assert_eq!(bit_value_in_block(0, &[2_u8.pow(6)]), false);
-        assert_eq!(bit_value_in_block(1, &[2_u8.pow(6)]), true);
-        assert_eq!(bit_value_in_block(2, &[2_u8.pow(5)]), true);
-        assert_eq!(bit_value_in_block(3, &[2_u8.pow(4)]), true);
-        assert_eq!(bit_value_in_block(4, &[2_u8.pow(3)]), true);
-        assert_eq!(bit_value_in_block(5, &[2_u8.pow(2)]), true);
-        assert_eq!(bit_value_in_block(6, &[2_u8.pow(1)]), true);
-        assert_eq!(bit_value_in_block(7, &[2_u8.pow(0)]), true);
+        assert!(bit_value_in_block(0, &[2_u8.pow(7)]));
+        assert!(!bit_value_in_block(0, &[2_u8.pow(6)]));
+        assert!(bit_value_in_block(1, &[2_u8.pow(6)]));
+        assert!(bit_value_in_block(2, &[2_u8.pow(5)]));
+        assert!(bit_value_in_block(3, &[2_u8.pow(4)]));
+        assert!(bit_value_in_block(4, &[2_u8.pow(3)]));
+        assert!(bit_value_in_block(5, &[2_u8.pow(2)]));
+        assert!(bit_value_in_block(6, &[2_u8.pow(1)]));
+        assert!(bit_value_in_block(7, &[2_u8.pow(0)]));
 
-        assert_eq!(bit_value_in_block(8, &[0, 2_u8.pow(7)]), true);
-        assert_eq!(bit_value_in_block(0, &[0, 2_u8.pow(7)]), false);
-        assert_eq!(bit_value_in_block(8, &[0, 0]), false);
+        assert!(bit_value_in_block(8, &[0, 2_u8.pow(7)]));
+        assert!(!bit_value_in_block(0, &[0, 2_u8.pow(7)]));
+        assert!(!bit_value_in_block(8, &[0, 0]));
 
-        assert_eq!(
-            bit_value_in_block(103, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),
-            true
-        );
+        assert!(bit_value_in_block(
+            103,
+            &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+        ));
     }
 
     #[test]
     fn test_transform_data() {
         assert_eq!(
-            transform_data(&[vec![0, 0], vec![0, 1], vec![1, 0]]),
+            transform_data(&[0, 0, 0, 1, 1, 0], 16),
             Data {
                 data: vec![
                     vec![0],
@@ -303,9 +441,79 @@ mod tests {
                     vec![0],
                     vec![2]
                 ],
-                _mask: 7,
-                _num_of_blocks: 3
+                mask: 7,
+                num_of_blocks: 3
             }
         )
+    }
+
+    /// The bit-sliced layout must agree with the direct per-block bit reads used at evaluation
+    /// time, for block counts on both sides of the 128-block word boundary.
+    #[test]
+    fn test_transform_data_matches_direct_reads() {
+        for block_size in [8, 16, 64] {
+            let block_bytes = block_size / 8;
+            for n_blocks in [1, 2, 127, 128, 129, 300] {
+                let raw: Vec<u8> = (0..n_blocks * block_bytes)
+                    .map(|i| (i as u64).wrapping_mul(0x9e3779b97f4a7c15) as u8)
+                    .collect();
+                let sliced = transform_data(&raw, block_size);
+
+                assert_eq!(sliced.num_of_blocks, n_blocks);
+                for (e, block) in raw.chunks_exact(block_size / 8).enumerate() {
+                    for bit in 0..block_size {
+                        let from_slice = (sliced.data[bit][e / 128] >> (e % 128)) & 1 == 1;
+                        assert_eq!(from_slice, bit_value_in_block(bit, block));
+                    }
+                }
+
+                // No bit may be set past the block count in the final word.
+                for bit in 0..block_size {
+                    let last = sliced.data[bit].last().unwrap();
+                    assert_eq!(last & !sliced.mask, 0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_split_data() {
+        let raw: Vec<u8> = (0..100).collect();
+
+        // 100 bytes, 2-byte blocks => 50 blocks, split 25/25.
+        let (train, test) = whole_blocks(&raw, 16, true).unwrap();
+        assert_eq!(train, &raw[..50]);
+        assert_eq!(test, &raw[50..]);
+
+        // Odd block count: the extra block goes to the testing half.
+        let (train, test) = whole_blocks(&raw[..30], 32, true).unwrap();
+        assert_eq!(train.len() + 4, test.len());
+
+        // Trailing partial block is dropped rather than silently mis-parsed.
+        let (train, test) = whole_blocks(&raw[..99], 16, true).unwrap();
+        assert_eq!(train.len() + test.len(), 98);
+
+        // Fewer than two blocks is an error, not a panic.
+        assert!(whole_blocks(&raw[..15], 128, true).is_err());
+        assert!(whole_blocks(&[], 8, true).is_err());
+    }
+
+    #[test]
+    fn test_arg_validation() {
+        assert!(parse_block_size("0").is_err());
+        assert!(parse_block_size("12").is_err());
+        assert!(parse_block_size("128").is_ok());
+        assert!(parse_k("0").is_err());
+        assert!(parse_k("1").is_ok());
+        assert!(parse_k("25").is_err());
+        assert!(parse_alpha("0").is_err());
+        assert!(parse_alpha("1").is_err());
+        assert!(parse_alpha("0.0001").is_ok());
+    }
+
+    #[test]
+    fn test_min_blocks_for_alpha() {
+        assert_eq!(min_blocks_for_alpha(0.5), 1);
+        assert_eq!(min_blocks_for_alpha(0.0001), 14);
     }
 }
